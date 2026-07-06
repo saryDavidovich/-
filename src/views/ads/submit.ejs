@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head><meta charset="utf-8"><title>פרסום מודעה - <%= list.name %></title>
+<style>
+  body { font-family: Arial, sans-serif; background:#f6f5f1; direction:rtl; margin:0; }
+  .wrap { max-width:480px; margin:40px auto; background:#fff; border:1px solid #e3e1d8; border-radius:10px; padding:24px; }
+  h1 { font-size:20px; color:#2c2c2a; }
+  input, textarea { width:100%; padding:9px; border:1px solid #d3d1c7; border-radius:6px; margin-bottom:12px; font-family:inherit; box-sizing:border-box; }
+  .btn { background:<%= list.accent_color %>; color:#fff; border:none; padding:10px 18px; border-radius:6px; cursor:pointer; font-size:14px; }
+  .hint { font-size:12px; color:#888780; margin-top:-6px; margin-bottom:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>פרסום מודעה בלוח: <%= list.name %></h1>
+
+  <% if (sent) { %>
+    <p style="color:#0f6e56;">המודעה נשלחה ותופיע בגיליון הקרוב לאחר אישור.</p>
+  <% } else { %>
+    <% if (error) { %><p style="color:#c04828;"><%= error %></p><% } %>
+    <form method="POST" action="/ads/<%= list.slug %>">
+      <label>המייל שלך</label>
+      <input type="email" name="email" required />
+
+      <label>כותרת קצרה (אופציונלי)</label>
+      <input type="text" name="subject" />
+
+      <label>תוכן המודעה</label>
+      <textarea name="body" rows="5" required></textarea>
+      <div class="hint">עד <%= wordLimit %> מילים בחינם.</div>
+
+      <% if (paidEnabled) { %>
+        <label>תמונה (קישור)</label>
+        <input type="text" name="image_url" placeholder="בתשלום" />
+        <label>קישור לפרסום</label>
+        <input type="text" name="link_url" placeholder="בתשלום" />
+      <% } %>
+
+      <button class="btn" type="submit">פרסם מודעה</button>
+    </form>
+  <% } %>
+</div>
+</body>
+</html>

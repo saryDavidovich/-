@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head><meta charset="utf-8"><title>תור אישור - <%= list.name %></title><link rel="stylesheet" href="/admin.css"></head>
+<body>
+<div class="container">
+  <a href="/admin">&rarr; חזרה לרשימות</a>
+  <h1>תור אישור: <%= list.name %></h1>
+
+  <% if (items.length === 0) { %>
+    <div class="card">אין פריטים ממתינים לאישור כרגע.</div>
+  <% } %>
+
+  <% items.forEach(item => { %>
+    <div class="item-box">
+      <div class="item-meta">
+        <%= item.type === 'question' ? 'שאלה' : 'מודעה' %> · מאת <%= item.from_email %> · <%= item.word_count %> מילים
+      </div>
+      <form method="POST" action="/admin/items/<%= item.id %>/approve">
+        <input type="text" name="subject" value="<%= item.subject || '' %>" placeholder="כותרת (אופציונלי)" />
+        <textarea name="body_edited" rows="4"><%= item.body_edited ?? item.body_raw %></textarea>
+        <% if (item.type === 'ad') { %>
+          <label style="font-size:12px;color:#888780;">רמת מודעה</label>
+          <select name="paid_tier">
+            <option value="free" <%= item.paid_tier === 'free' ? 'selected' : '' %>>חינם</option>
+            <option value="plus" <%= item.paid_tier === 'plus' ? 'selected' : '' %>>מודגשת (עתידי - בתשלום)</option>
+            <option value="premium" <%= item.paid_tier === 'premium' ? 'selected' : '' %>>פרימיום (עתידי - בתשלום)</option>
+          </select>
+        <% } %>
+        <div class="actions">
+          <button class="btn" type="submit">אשר</button>
+        </div>
+      </form>
+      <form method="POST" action="/admin/items/<%= item.id %>/reject" style="display:inline;">
+        <button class="btn danger" type="submit">דחה</button>
+      </form>
+
+      <% if (item.pendingAnswers && item.pendingAnswers.length) { %>
+        <div style="margin-top:14px;padding-inline-start:16px;border-inline-start:2px solid #eceae3;">
+          <div class="item-meta">תשובות ממתינות לשאלה זו:</div>
+          <% item.pendingAnswers.forEach(ans => { %>
+            <form method="POST" action="/admin/items/<%= ans.id %>/approve" style="margin-bottom:8px;">
+              <div class="item-meta">מאת <%= ans.from_email %></div>
+              <textarea name="body_edited" rows="3"><%= ans.body_edited ?? ans.body_raw %></textarea>
+              <input type="hidden" name="subject" value="" />
+              <div class="actions">
+                <button class="btn" type="submit">אשר תשובה</button>
+              </div>
+            </form>
+          <% }) %>
+        </div>
+      <% } %>
+    </div>
+  <% }) %>
+</div>
+</body>
+</html>

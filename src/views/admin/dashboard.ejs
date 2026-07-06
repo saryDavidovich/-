@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head><meta charset="utf-8"><title>פאנל ניהול</title><link rel="stylesheet" href="/admin.css"></head>
+<body>
+<div class="container">
+  <div style="display:flex;justify-content:space-between;align-items:center;">
+    <h1>הרשימות שלי</h1>
+    <div style="display:flex;gap:8px;">
+      <a class="btn" href="/admin/lists/new">+ נושא חדש</a>
+      <form method="POST" action="/admin/logout"><button class="btn secondary" type="submit">יציאה</button></form>
+    </div>
+  </div>
+
+  <% if (lists.length === 0) { %>
+    <div class="card">עדיין אין רשימות. לחץ "נושא חדש" כדי להתחיל.</div>
+  <% } %>
+
+  <% lists.forEach(list => { %>
+    <div class="card">
+      <div class="list-row" style="border-bottom:none;">
+        <div>
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:<%= list.accent_color %>;margin-inline-end:6px;"></span>
+          <strong><%= list.name %></strong>
+          <span class="pill"><%= list.subscriber_count %> מנויים</span>
+          <% if (list.pending_count > 0) { %>
+            <span class="pill pending"><%= list.pending_count %> ממתינים לאישור</span>
+          <% } %>
+          <% if (!list.active) { %><span class="pill">מושבת</span><% } %>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <a class="btn" href="/admin/queue/<%= list.id %>">תור אישור</a>
+          <form method="POST" action="/admin/lists/<%= list.id %>/toggle">
+            <button class="btn secondary" type="submit"><%= list.active ? 'השבת' : 'הפעל' %></button>
+          </form>
+        </div>
+      </div>
+      <div style="font-size:12px;color:#888780;margin-top:6px;">
+        קליטת שאלות: <code>ask+<%= list.slug %>@yourdomain.com</code> ·
+        קליטת מודעות: <code>ads+<%= list.slug %>@yourdomain.com</code> ·
+        טופס מודעה: <a href="/ads/<%= list.slug %>" target="_blank">/ads/<%= list.slug %></a>
+      </div>
+    </div>
+  <% }) %>
+</div>
+</body>
+</html>
