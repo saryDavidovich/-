@@ -2,31 +2,32 @@ const db = require('./db');
 const { renderIssue } = require('./templates');
 const fetch = require('node-fetch');
 
-const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN;
-const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY;
-const FROM_ADDRESS = process.env.FROM_ADDRESS || `newsletter@${MAILGUN_DOMAIN || 'example.com'}`;
+const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
+const FROM_ADDRESS = process.env.FROM_ADDRESS || 'newsletter@example.com';
+const BRAND_NAME = process.env.BRAND_NAME || 'הרשימות שלנו';
 
-async function sendViaMailgun(to, subject, html) {
-  if (!MAILGUN_API_KEY || !MAILGUN_DOMAIN) {
-    console.log(`[DRY RUN - אין מפתח Mailgun מוגדר] היה נשלח מייל אל ${to}: ${subject}`);
+async function sendViaSendGrid(to, subject, html) {
+  if (!SENDGRID_API_KEY) {
+    console.log(`[DRY RUN - אין מפתח SendGrid מוגדר] היה נשלח מייל אל ${to}: ${subject}`);
     return { dryRun: true };
   }
-  const params = new URLSearchParams();
-  params.append('from', `${process.env.BRAND_NAME || 'הרשימות שלנו'} <${FROM_ADDRESS}>`);
-  params.append('to', to);
-  params.append('subject', subject);
-  params.append('html', html);
 
-  const resp = await fetch(`https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`, {
+  const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
     headers: {
-      Authorization: 'Basic ' + Buffer.from(`api:${MAILGUN_API_KEY}`).toString('base64'),
-      'Content-Type': 'application/x-www-form-urlencoded'
+      Authorization: `Bearer ${SENDGRID_API_KEY}`,
+      'Content-Type': 'application/json'
     },
-    body: params
+    body: JSON.stringify({
+      personalizations: [{ to: [{ email: to }] }],
+      from: { email: FROM_ADDRESS, name: BRAND_NAME },
+      subject,
+      content: [{ type: 'text/html', value: html }]
+    })
   });
-  if (!resp.ok) throw new Error(`Mailgun error: ${resp.status} ${await resp.text()}`);
-  return resp.json();
+
+  if (!resp.ok) throw new Error(`SendGrid error: ${resp.status} ${await resp.text()}`);
+  return { ok: true };
 }
 
 // בונה את הגיליון השבועי לרשימה אחת: אוסף את כל הפריטים המאושרים שעדיין
@@ -68,7 +69,7 @@ async function compileAndSendIssue(list) {
   let sentCount = 0;
   for (const sub of subscribers) {
     const html = renderIssue({ list, qaPairs, ads, unsubscribeToken: sub.token });
-    await sendViaMailgun(sub.email, `${list.name} - עדכון שבועי`, html);
+    await sendViaSendGrid(sub.email, `${list.name} - עדכון שבועי`, html);
     sentCount++;
   }
 
