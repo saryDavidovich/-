@@ -15,6 +15,13 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
 
+// תמונות/גיפים שהועלו (מודעות פרימיום/מודגשות) - מוגשות מהתיקייה המתמשכת
+// data/uploads, כדי שלא יאבדו בדיפלוי חדש (בהנחה שיש Volume מחובר ב-Railway).
+const fs = require('fs');
+const UPLOAD_DIR = path.join(__dirname, '..', 'data', 'uploads');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+app.use('/uploads', express.static(UPLOAD_DIR));
+
 app.use(session({
   secret: process.env.SESSION_SECRET || 'change-me-in-env',
   resave: false,

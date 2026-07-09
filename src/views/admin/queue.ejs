@@ -7,9 +7,29 @@
   <% } %>
 
   <% items.forEach(item => { %>
+    <% if (item.type === 'answer_standalone') { %>
+      <div class="item-box" style="background:#fdfbf5;">
+        <div class="item-meta">
+          תגובה לשאלה שכבר אושרה בעבר · מאת <%= item.from_email %> · <%= item.word_count %> מילים
+        </div>
+        <div style="font-size:12px;color:#888780;background:#f1efe8;padding:8px;border-radius:6px;margin-bottom:8px;">
+          השאלה המקורית: <%= item.parentQuestion ? (item.parentQuestion.subject || (item.parentQuestion.body_edited ?? item.parentQuestion.body_raw)) : '(לא נמצאה)' %>
+        </div>
+        <form method="POST" action="/admin/items/<%= item.id %>/approve">
+          <textarea name="body_edited" rows="4"><%= item.body_edited ?? item.body_raw %></textarea>
+          <input type="hidden" name="subject" value="<%= item.subject || '' %>" />
+          <div class="actions">
+            <button class="btn" type="submit">אשר תגובה</button>
+          </div>
+        </form>
+        <form method="POST" action="/admin/items/<%= item.id %>/reject" style="display:inline;">
+          <button class="btn danger" type="submit">דחה</button>
+        </form>
+      </div>
+    <% } else { %>
     <div class="item-box">
       <div class="item-meta">
-        <%= item.type === 'question' ? 'שאלה' : 'מודעה' %> · מאת <%= item.from_email %> · <%= item.word_count %> מילים
+        <%= { question: 'שאלה', ad: 'מודעה', article: 'נושא' }[item.type] || item.type %> · מאת <%= item.from_email %> · <%= item.word_count %> מילים
       </div>
       <form method="POST" action="/admin/items/<%= item.id %>/approve">
         <input type="text" name="subject" value="<%= item.subject || '' %>" placeholder="כותרת (אופציונלי)" />
@@ -46,6 +66,7 @@
         </div>
       <% } %>
     </div>
+    <% } %>
   <% }) %>
 
 <%- include('partials/footer') %>

@@ -1,5 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const db = require('../db');
 const { renderIssue } = require('../templates');
 
@@ -11,6 +14,17 @@ function requireAuth(req, res, next) {
 function getAllLists() {
   return db.prepare('SELECT * FROM lists ORDER BY created_at DESC').all();
 }
+
+const UPLOAD_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const safeExt = (path.extname(file.originalname) || '').slice(0, 10);
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`);
+  }
+});
+const upload = multer({ storage });
 
 router.get('/login', (req, res) => {
   res.render('admin/login', { error: null });
@@ -71,17 +85,39 @@ router.get('/lists/:id/queue', requireAuth, (req, res) => {
   const list = loadListOr404(req, res);
   if (!list) return;
 
-  const pending = db.prepare(`
-    SELECT * FROM items WHERE list_id = ? AND status = 'pending' ORDER BY created_at ASC
+  const pendingQuestions = db.prepare(`
+    SELECT * FROM items WHERE list_id = ? AND status = 'pending' AND type = 'question' ORDER BY created_at ASC
+  `).all(list.id);
+  const pendingAds = db.prepare(`
+    SELECT * FROM items WHERE list_id = ? AND status = 'pending' AND type = 'ad' ORDER BY created_at ASC
+  `).all(list.id);
+  const pendingTopics = db.prepare(`
+    SELECT * FROM items WHERE list_id = ? AND status = 'pending' AND type = 'article' ORDER BY created_at ASC
+  `).all(list.id);
+  const pendingAnswers = db.prepare(`
+    SELECT * FROM items WHERE list_id = ? AND status = 'pending' AND type = 'answer' ORDER BY created_at ASC
   `).all(list.id);
 
-  const items = pending.map(item => {
-    if (item.type === 'question') {
-      const pendingAnswers = db.prepare(`SELECT * FROM items WHERE parent_id = ? AND status = 'pending'`).all(item.id);
-      return { ...item, pendingAnswers };
-    }
-    return item;
-  }).filter(item => item.type !== 'answer');
+  const pendingQuestionIds = new Set(pendingQuestions.map(q => q.id));
+
+  // תשובות ששייכות לשאלה שעדיין ממתינה - מקוננות תחתיה כרגיל
+  const questionItems = pendingQuestions.map(q => ({
+    ...q,
+    pendingAnswers: pendingAnswers.filter(a => a.parent_id === q.id)
+  }));
+
+  // תשובות ששייכות לשאלה שכבר אושרה/נשלחה בעבר - אלה היו "נעלמות" קודם כי
+  // לא היה להן מקום להופיע בתור. מציגים אותן כפריט עצמאי, עם ציטוט השאלה
+  // המקורית לצורך הקשר.
+  const orphanAnswers = pendingAnswers
+    .filter(a => !pendingQuestionIds.has(a.parent_id))
+    .map(a => {
+      const parentQuestion = db.prepare('SELECT * FROM items WHERE id = ?').get(a.parent_id);
+      return { ...a, type: 'answer_standalone', parentQuestion };
+    });
+
+  const items = [...questionItems, ...pendingTopics, ...pendingAds, ...orphanAnswers]
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   res.render('admin/queue', { list, items, allLists: getAllLists() });
 });
@@ -139,24 +175,51 @@ router.post('/lists/:id/compose/qa', requireAuth, express.urlencoded({ extended:
   res.redirect(`/admin/lists/${list.id}/preview`);
 });
 
-// -------- כתיבת מודעה ישירות (בלי מייל) --------
+// -------- כתיבת נושא/מאמר ישירות (בלי שאלה-תשובה) --------
+router.get('/lists/:id/compose/topic', requireAuth, (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+  res.render('admin/compose_topic', { list, allLists: getAllLists() });
+});
+
+router.post('/lists/:id/compose/topic', requireAuth, express.urlencoded({ extended: true }), (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+
+  const { subject, body } = req.body;
+  const wc = (body || '').trim().split(/\s+/).filter(Boolean).length;
+
+  db.prepare(`
+    INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, approved_at)
+    VALUES (?, 'article', 'approved', 'admin', ?, ?, ?, ?, datetime('now'))
+  `).run(list.id, subject || '', body, body, wc);
+
+  res.redirect(`/admin/lists/${list.id}/preview`);
+});
+
+// -------- כתיבת מודעה ישירות (בלי מייל), כולל תמונה/גיף וצבעים --------
 router.get('/lists/:id/compose/ad', requireAuth, (req, res) => {
   const list = loadListOr404(req, res);
   if (!list) return;
   res.render('admin/compose_ad', { list, allLists: getAllLists() });
 });
 
-router.post('/lists/:id/compose/ad', requireAuth, express.urlencoded({ extended: true }), (req, res) => {
+router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), (req, res) => {
   const list = loadListOr404(req, res);
   if (!list) return;
 
-  const { subject, body, paid_tier } = req.body;
+  const { subject, body, paid_tier, bg_color, text_color } = req.body;
   const wc = (body || '').trim().split(/\s+/).filter(Boolean).length;
+  const images = req.file ? [`/uploads/${req.file.filename}`] : [];
+  const useStyle = paid_tier === 'plus' || paid_tier === 'premium';
 
   db.prepare(`
-    INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, paid_tier, approved_at)
-    VALUES (?, 'ad', 'approved', 'admin', ?, ?, ?, ?, ?, datetime('now'))
-  `).run(list.id, subject || '', body, body, wc, paid_tier || 'free');
+    INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, paid_tier, images_json, bg_color, text_color, approved_at)
+    VALUES (?, 'ad', 'approved', 'admin', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `).run(
+    list.id, subject || '', body, body, wc, paid_tier || 'free', JSON.stringify(images),
+    useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null
+  );
 
   res.redirect(`/admin/lists/${list.id}/preview`);
 });
@@ -166,24 +229,74 @@ router.get('/lists/:id/preview', requireAuth, (req, res) => {
   const list = loadListOr404(req, res);
   if (!list) return;
 
-  const approvedQuestions = db.prepare(`
+  const newQuestions = db.prepare(`
     SELECT * FROM items WHERE list_id = ? AND type = 'question' AND status = 'approved' ORDER BY approved_at ASC
   `).all(list.id);
 
-  const qaPairs = approvedQuestions.map(question => {
+  const qaPairsNew = newQuestions.map(question => {
     const answer = db.prepare(`
       SELECT * FROM items WHERE parent_id = ? AND type = 'answer' AND status = 'approved' ORDER BY approved_at ASC LIMIT 1
     `).get(question.id);
     return { question, answer: answer || null };
   });
 
+  const followUpAnswers = db.prepare(`
+    SELECT a.* FROM items a
+    JOIN items q ON a.parent_id = q.id
+    WHERE a.list_id = ? AND a.type = 'answer' AND a.status = 'approved' AND q.status = 'sent'
+    ORDER BY a.approved_at ASC
+  `).all(list.id);
+
+  const qaPairsFollowUp = followUpAnswers.map(answer => {
+    const question = db.prepare('SELECT * FROM items WHERE id = ?').get(answer.parent_id);
+    return { question, answer };
+  });
+
+  const qaPairs = [...qaPairsNew, ...qaPairsFollowUp];
+
   const tierOrder = { premium: 0, plus: 1, free: 2 };
   const ads = db.prepare(`
     SELECT * FROM items WHERE list_id = ? AND type = 'ad' AND status = 'approved' ORDER BY approved_at ASC
   `).all(list.id).sort((a, b) => (tierOrder[a.paid_tier] ?? 9) - (tierOrder[b.paid_tier] ?? 9));
 
-  const html = renderIssue({ list, qaPairs, ads, unsubscribeToken: 'preview' });
+  const topics = db.prepare(`
+    SELECT * FROM items WHERE list_id = ? AND type = 'article' AND status = 'approved' ORDER BY approved_at ASC
+  `).all(list.id);
+
+  const html = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: 'preview' });
   res.send(html);
+});
+
+// -------- הגדרות רשימה --------
+router.get('/lists/:id/settings', requireAuth, (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+  res.render('admin/settings', { list, allLists: getAllLists() });
+});
+
+router.post('/lists/:id/settings', requireAuth, express.urlencoded({ extended: true }), (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+
+  const { name, description, accent_color, show_ad_buttons, show_ask_button, order_qa, order_topics, order_ads } = req.body;
+
+  // בונים את סדר הסקשנים לפי המספרים שנבחרו (1/2/3) בטופס
+  const sections = [
+    { key: 'qa', pos: parseInt(order_qa, 10) || 1 },
+    { key: 'topics', pos: parseInt(order_topics, 10) || 2 },
+    { key: 'ads', pos: parseInt(order_ads, 10) || 3 }
+  ].sort((a, b) => a.pos - b.pos);
+  const sectionOrder = sections.map(s => s.key).join(',');
+
+  db.prepare(`
+    UPDATE lists SET name = ?, description = ?, accent_color = ?, show_ad_buttons = ?, show_ask_button = ?, section_order = ?
+    WHERE id = ?
+  `).run(
+    name.trim(), description || '', accent_color || list.accent_color,
+    show_ad_buttons ? 1 : 0, show_ask_button ? 1 : 0, sectionOrder, list.id
+  );
+
+  res.redirect(`/admin/lists/${list.id}/settings`);
 });
 
 // -------- מנויים --------

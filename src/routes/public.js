@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const db = require('../db');
+const { v4: uuidv4 } = require('uuid');
 
 // דגל תכונה: כשתהיה מוכן להפעיל תשלום על תמונות/גיפים/קישורים,
 // תשנה את זה ל-true בקובץ ה-.env (PAID_FEATURES_ENABLED=true) -
@@ -8,42 +12,91 @@ const db = require('../db');
 const PAID_FEATURES_ENABLED = process.env.PAID_FEATURES_ENABLED === 'true';
 const FREE_WORD_LIMIT = parseInt(process.env.FREE_WORD_LIMIT || '40', 10);
 
+const UPLOAD_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+  filename: (req, file, cb) => {
+    const safeExt = (path.extname(file.originalname) || '').slice(0, 10);
+    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`);
+  }
+});
+const upload = multer({ storage });
+
 function countWords(str = '') {
   return str.trim().split(/\s+/).filter(Boolean).length;
 }
 
+function validTier(t) {
+  return ['free', 'plus', 'premium'].includes(t) ? t : 'free';
+}
+
+// -------- פרסום מודעה --------
 router.get('/ads/:slug', (req, res) => {
   const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
   if (!list) return res.status(404).send('רשימה לא נמצאה');
-  res.render('ads/submit', { list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, error: null, sent: false });
+  const requestedTier = validTier(req.query.tier);
+  res.render('ads/submit', {
+    list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT,
+    requestedTier, error: null, sent: false
+  });
 });
 
-router.post('/ads/:slug', express.urlencoded({ extended: true }), (req, res) => {
+router.post('/ads/:slug', upload.single('image'), (req, res) => {
+  const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
+  if (!list) return res.status(404).send('רשימה לא נמצאה');
+
+  const { email, subject, body, bg_color, text_color } = req.body;
+  const tier = validTier(req.body.paid_tier);
+  const wc = countWords(body || '');
+
+  // מגבלת המילים חלה רק על המודעה החינמית - מודעות מודגשות/פרימיום
+  // (כשיופעלו בתשלום) לא כפופות למגבלה הזו.
+  if (tier === 'free' && wc > FREE_WORD_LIMIT) {
+    return res.render('ads/submit', {
+      list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier,
+      error: `המודעה החינמית מוגבלת ל-${FREE_WORD_LIMIT} מילים (כרגע: ${wc}).`,
+      sent: false
+    });
+  }
+
+  const images = (PAID_FEATURES_ENABLED && tier !== 'free' && req.file) ? [`/uploads/${req.file.filename}`] : [];
+  const useStyle = PAID_FEATURES_ENABLED && tier !== 'free';
+
+  db.prepare(`
+    INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color)
+    VALUES (?, 'ad', 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    list.id, email, subject || '', body, wc, tier, JSON.stringify(images),
+    useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null
+  );
+
+  res.render('ads/submit', { list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier, error: null, sent: true });
+});
+
+// -------- פרסום נושא/מאמר (מהלקוח, בלי מייל) --------
+router.get('/topics/:slug', (req, res) => {
+  const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
+  if (!list) return res.status(404).send('רשימה לא נמצאה');
+  res.render('topics/submit', { list, error: null, sent: false });
+});
+
+router.post('/topics/:slug', express.urlencoded({ extended: true }), (req, res) => {
   const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
   if (!list) return res.status(404).send('רשימה לא נמצאה');
 
   const { email, subject, body } = req.body;
   const wc = countWords(body || '');
 
-  if (wc > FREE_WORD_LIMIT) {
-    return res.render('ads/submit', {
-      list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT,
-      error: `המודעה החינמית מוגבלת ל-${FREE_WORD_LIMIT} מילים (כרגע: ${wc}).`,
-      sent: false
-    });
-  }
-
   db.prepare(`
-    INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier)
-    VALUES (?, 'ad', 'pending', ?, ?, ?, ?, 'free')
+    INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count)
+    VALUES (?, 'article', 'pending', ?, ?, ?, ?)
   `).run(list.id, email, subject || '', body, wc);
 
-  res.render('ads/submit', { list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, error: null, sent: true });
+  res.render('topics/submit', { list, error: null, sent: true });
 });
 
 // -------- הרשמה להצטרפות לרשימה --------
-const { v4: uuidv4 } = require('uuid');
-
 router.get('/subscribe/:slug', (req, res) => {
   const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
   if (!list) return res.status(404).send('רשימה לא נמצאה');

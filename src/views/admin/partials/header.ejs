@@ -22,9 +22,11 @@
           </div>
           <a class="side-sublink <%= (typeof activeListId !== 'undefined' && activeListId == l.id && page === 'queue') ? 'active' : '' %>" href="/admin/lists/<%= l.id %>/queue">תור אישור</a>
           <a class="side-sublink <%= (typeof activeListId !== 'undefined' && activeListId == l.id && page === 'compose-qa') ? 'active' : '' %>" href="/admin/lists/<%= l.id %>/compose/qa">כתיבת שו"ת</a>
+          <a class="side-sublink <%= (typeof activeListId !== 'undefined' && activeListId == l.id && page === 'compose-topic') ? 'active' : '' %>" href="/admin/lists/<%= l.id %>/compose/topic">כתיבת נושא</a>
           <a class="side-sublink <%= (typeof activeListId !== 'undefined' && activeListId == l.id && page === 'compose-ad') ? 'active' : '' %>" href="/admin/lists/<%= l.id %>/compose/ad">כתיבת מודעה</a>
           <a class="side-sublink <%= (typeof activeListId !== 'undefined' && activeListId == l.id && page === 'preview') ? 'active' : '' %>" href="/admin/lists/<%= l.id %>/preview" target="_blank">תצוגה מקדימה</a>
           <a class="side-sublink <%= (typeof activeListId !== 'undefined' && activeListId == l.id && page === 'subscribers') ? 'active' : '' %>" href="/admin/lists/<%= l.id %>/subscribers">מנויים</a>
+          <a class="side-sublink <%= (typeof activeListId !== 'undefined' && activeListId == l.id && page === 'settings') ? 'active' : '' %>" href="/admin/lists/<%= l.id %>/settings">הגדרות</a>
         </div>
       <% }) %>
 

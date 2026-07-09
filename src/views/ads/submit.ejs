@@ -5,7 +5,7 @@
   body { font-family: Arial, sans-serif; background:#f6f5f1; direction:rtl; margin:0; }
   .wrap { max-width:480px; margin:40px auto; background:#fff; border:1px solid #e3e1d8; border-radius:10px; padding:24px; }
   h1 { font-size:20px; color:#2c2c2a; }
-  input, textarea { width:100%; padding:9px; border:1px solid #d3d1c7; border-radius:6px; margin-bottom:12px; font-family:inherit; box-sizing:border-box; }
+  input, textarea, select { width:100%; padding:9px; border:1px solid #d3d1c7; border-radius:6px; margin-bottom:12px; font-family:inherit; box-sizing:border-box; }
   .btn { background:<%= list.accent_color %>; color:#fff; border:none; padding:10px 18px; border-radius:6px; cursor:pointer; font-size:14px; }
   .hint { font-size:12px; color:#888780; margin-top:-6px; margin-bottom:12px; }
 </style>
@@ -18,7 +18,7 @@
     <p style="color:#0f6e56;">המודעה נשלחה ותופיע בגיליון הקרוב לאחר אישור.</p>
   <% } else { %>
     <% if (error) { %><p style="color:#c04828;"><%= error %></p><% } %>
-    <form method="POST" action="/ads/<%= list.slug %>">
+    <form method="POST" action="/ads/<%= list.slug %>" enctype="multipart/form-data">
       <label>המייל שלך</label>
       <input type="email" name="email" required />
 
@@ -27,13 +27,24 @@
 
       <label>תוכן המודעה</label>
       <textarea name="body" rows="5" required></textarea>
-      <div class="hint">עד <%= wordLimit %> מילים בחינם.</div>
+
+      <label>סוג מודעה</label>
+      <select name="paid_tier" id="tierSelect" onchange="document.getElementById('freeHint').style.display = (this.value === 'free') ? 'block' : 'none'; document.getElementById('styleFields').style.display = (this.value !== 'free') ? 'block' : 'none';">
+        <option value="free" <%= requestedTier === 'free' ? 'selected' : '' %>>מודעת שורה (חינם)</option>
+        <option value="plus" <%= requestedTier === 'plus' ? 'selected' : '' %>>מודעה מודגשת</option>
+        <option value="premium" <%= requestedTier === 'premium' ? 'selected' : '' %>>מודעה פרימיום</option>
+      </select>
+      <div class="hint" id="freeHint" style="display:<%= requestedTier === 'free' ? 'block' : 'none' %>;">עד <%= wordLimit %> מילים בחינם.</div>
 
       <% if (paidEnabled) { %>
-        <label>תמונה (קישור)</label>
-        <input type="text" name="image_url" placeholder="בתשלום" />
-        <label>קישור לפרסום</label>
-        <input type="text" name="link_url" placeholder="בתשלום" />
+        <div id="styleFields" style="display:<%= requestedTier !== 'free' ? 'block' : 'none' %>;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;">
+          <label>תמונה או גיף (אופציונלי)</label>
+          <input type="file" name="image" accept="image/*" />
+          <label>צבע רקע</label>
+          <input type="color" name="bg_color" value="#FFF6E5" style="height:36px;padding:2px;" />
+          <label>צבע טקסט</label>
+          <input type="color" name="text_color" value="#2C2C2A" style="height:36px;padding:2px;" />
+        </div>
       <% } %>
 
       <button class="btn" type="submit">פרסם מודעה</button>

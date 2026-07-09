@@ -34,23 +34,44 @@ async function sendViaSendGrid(to, subject, html) {
 // לא נשלחו, מרכיב שאלה+תשובה יחד, ממיין מודעות לפי רמת תשלום (פרימיום קודם),
 // ושולח לכל מנוי פעיל ברשימה. הכל בלי מגע יד אדם מעבר לאישור שכבר ניתן.
 async function compileAndSendIssue(list) {
-  const approvedQuestions = db.prepare(`
+  const newQuestions = db.prepare(`
     SELECT * FROM items WHERE list_id = ? AND type = 'question' AND status = 'approved' ORDER BY approved_at ASC
   `).all(list.id);
 
-  const qaPairs = approvedQuestions.map(question => {
+  const qaPairsNew = newQuestions.map(question => {
     const answer = db.prepare(`
       SELECT * FROM items WHERE parent_id = ? AND type = 'answer' AND status = 'approved' ORDER BY approved_at ASC LIMIT 1
     `).get(question.id);
     return { question, answer: answer || null };
   });
 
+  // תשובות חדשות שהגיעו לשאלות שכבר נשלחו בעבר (למשל לקוח הגיב אחרי
+  // שהגיליון כבר יצא) - מכניסים אותן לגיליון הבא יחד עם השאלה המקורית,
+  // כדי שיהיה הקשר, בלי לשלוח את השאלה כאילו היא חדשה.
+  const followUpAnswers = db.prepare(`
+    SELECT a.* FROM items a
+    JOIN items q ON a.parent_id = q.id
+    WHERE a.list_id = ? AND a.type = 'answer' AND a.status = 'approved' AND q.status = 'sent'
+    ORDER BY a.approved_at ASC
+  `).all(list.id);
+
+  const qaPairsFollowUp = followUpAnswers.map(answer => {
+    const question = db.prepare('SELECT * FROM items WHERE id = ?').get(answer.parent_id);
+    return { question, answer };
+  });
+
+  const qaPairs = [...qaPairsNew, ...qaPairsFollowUp];
+
   const tierOrder = { premium: 0, plus: 1, free: 2 };
   const ads = db.prepare(`
     SELECT * FROM items WHERE list_id = ? AND type = 'ad' AND status = 'approved' ORDER BY approved_at ASC
   `).all(list.id).sort((a, b) => (tierOrder[a.paid_tier] ?? 9) - (tierOrder[b.paid_tier] ?? 9));
 
-  if (qaPairs.length === 0 && ads.length === 0) {
+  const topics = db.prepare(`
+    SELECT * FROM items WHERE list_id = ? AND type = 'article' AND status = 'approved' ORDER BY approved_at ASC
+  `).all(list.id);
+
+  if (qaPairs.length === 0 && ads.length === 0 && topics.length === 0) {
     console.log(`אין תוכן מאושר לרשימת "${list.name}" - מדלגים על שליחה השבוע.`);
     return null;
   }
@@ -63,12 +84,12 @@ async function compileAndSendIssue(list) {
   const issueId = issueRow.lastInsertRowid;
 
   // שומרים גם עותק ארכיוני עם טוקן כללי (לא אישי) - לצפייה/שיתוף באתר
-  const archiveHtml = renderIssue({ list, qaPairs, ads, unsubscribeToken: 'archive' });
+  const archiveHtml = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: 'archive' });
   db.prepare(`UPDATE issues SET html = ? WHERE id = ?`).run(archiveHtml, issueId);
 
   let sentCount = 0;
   for (const sub of subscribers) {
-    const html = renderIssue({ list, qaPairs, ads, unsubscribeToken: sub.token });
+    const html = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: sub.token });
     await sendViaSendGrid(sub.email, `${list.name} - עדכון שבועי`, html);
     sentCount++;
   }
@@ -76,9 +97,10 @@ async function compileAndSendIssue(list) {
   const allItemIds = [
     ...qaPairs.map(p => p.question.id),
     ...qaPairs.filter(p => p.answer).map(p => p.answer.id),
-    ...ads.map(a => a.id)
+    ...ads.map(a => a.id),
+    ...topics.map(t => t.id)
   ];
-  const markSent = db.prepare(`UPDATE items SET status = 'sent', issue_id = ? WHERE id = ?`);
+  const markSent = db.prepare(`UPDATE items SET status = 'sent', issue_id = ? WHERE id = ? AND status = 'approved'`);
   for (const id of allItemIds) markSent.run(issueId, id);
 
   db.prepare(`UPDATE issues SET status = 'sent', sent_at = datetime('now'), recipient_count = ? WHERE id = ?`)
