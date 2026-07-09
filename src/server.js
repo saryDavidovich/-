@@ -4,6 +4,16 @@ const session = require('express-session');
 const path = require('path');
 const cron = require('node-cron');
 
+// רשת ביטחון: בלי זה, שגיאה לא-מטופלת בכל בקשה בודדת (כמו העלאת קובץ
+// פגום) מפילה את כל השרת עבור כולם עד שRailway מפעיל אותו מחדש. עדיף
+// לתעד את השגיאה ולהמשיך לרוץ, מאשר שכל המערכת תיפול בגלל בקשה אחת.
+process.on('uncaughtException', (err) => {
+  console.error('=== שגיאה לא מטופלת (uncaughtException) - השרת ממשיך לרוץ ===', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('=== Promise נדחה בלי טיפול (unhandledRejection) - השרת ממשיך לרוץ ===', err);
+});
+
 const adminRoutes = require('./routes/admin');
 const inboundRoutes = require('./routes/inbound');
 const publicRoutes = require('./routes/public');

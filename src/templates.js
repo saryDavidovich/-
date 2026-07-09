@@ -47,13 +47,11 @@ function absoluteUrl(path) {
 }
 
 // הופך תמונה שהועלתה למערכת (נתיב כמו /uploads/xxx.png) למחרוזת base64
-// המוטמעת ישירות בתוך ה-HTML של המייל עצמו (data URI). כך אין שום קובץ
-// נפרד שהמייל "מצביע" עליו מבחוץ - התמונה היא חלק מהטקסט של המייל,
-// ולכן אין לשום מסנן (כמו נטפרי) מה לסרוק או לעכב בנפרד, והיא מוצגת מיד.
+// המוטמעת ישירות בתוך ה-HTML (data URI). שימושי לתצוגה בדפדפן (תצוגה
+// מקדימה/ארכיון/היסטוריה) - שם זה תמיד עובד כי דפדפנים תומכים ב-data URI
+// בלי יוצא מן הכלל.
 function embedImageAsDataUri(relativePath) {
   try {
-    // תומך רק בתמונות שהועלו למערכת שלנו עצמה (לא ב-URL חיצוני), כי רק
-    // אותן אפשר לקרוא ישירות מהדיסק בזמן בניית הגיליון.
     if (/^https?:\/\//i.test(relativePath)) return null;
     const ext = path.extname(relativePath).toLowerCase();
     const mime = MIME_BY_EXT[ext];
@@ -71,6 +69,16 @@ function embedImageAsDataUri(relativePath) {
   }
 }
 
+// למייל בפועל שנשלח (useCid=true) לא משתמשים ב-data URI, כי חלק ניכר
+// מתוכנות המייל - הבולטת שבהן Outlook - פשוט לא מציגות תמונות data URI
+// בכלל. הפתרון הסטנדרטי שכל שירותי הניוזלטרים משתמשים בו הוא הטמעת
+// התמונה כקובץ מצורף עם Content-ID (cid), ואז הפניה אליה מתוך ה-HTML
+// דרך src="cid:...". זה עדיין חלק מאותה הודעה (לא קובץ נפרד שנטען
+// מבחוץ), אבל נתמך כמעט בכל תוכנת מייל שקיימת.
+function imageCid(itemId, index) {
+  return `img-${itemId}-${index}`;
+}
+
 function mailto(action, slug, subjectText) {
   return `mailto:${action}+${slug}@${INBOUND_DOMAIN}?subject=${encodeURIComponent(subjectText)}`;
 }
@@ -81,7 +89,7 @@ function wordLimitBadge(item) {
   return `<span style="font-size:11px;background:#f1efe8;color:#5f5e5a;padding:2px 8px;border-radius:10px;margin-inline-start:6px;">${tierLabel}</span>`;
 }
 
-function renderAd(item) {
+function renderAd(item, useCid) {
   const images = JSON.parse(item.images_json || '[]');
   const links = JSON.parse(item.links_json || '[]');
   const body = formatBody(item.body_edited ?? item.body_raw);
@@ -92,11 +100,13 @@ function renderAd(item) {
     ? `background:${bg};color:${fg};padding:14px;border-radius:8px;`
     : `color:${fg};padding:14px 0;`;
 
-  // התמונה מוטמעת ישירות בתוך ה-HTML (base64) - היא חלק מגוף המייל עצמו,
-  // לא קובץ נפרד שנטען מבחוץ. היא מוצגת מיד בראש המודעה, בדיוק כמו
-  // בפרסומת רגילה. אם ההטמעה נכשלת מסיבה כלשהי (למשל קובץ לא נמצא),
-  // נופלים בחזרה לקישור טקסט רגיל במקום להשאיר את המודעה בלי תמונה בשקט.
-  const imagesHtml = images.map(src => {
+  // במייל בפועל (useCid=true): src="cid:..." - הקובץ מצורף להודעה עם
+  // אותו מזהה, ראה compiler.js. בתצוגה בדפדפן (preview/history/archive):
+  // data URI, כי שם אין "מצורפים" בכלל, רק HTML גולמי.
+  const imagesHtml = images.map((src, index) => {
+    if (useCid) {
+      return `<img src="cid:${imageCid(item.id, index)}" alt="" style="max-width:100%;border-radius:8px;margin-bottom:8px;display:block;" />`;
+    }
     const dataUri = embedImageAsDataUri(src);
     if (dataUri) {
       return `<img src="${dataUri}" alt="" style="max-width:100%;border-radius:8px;margin-bottom:8px;display:block;" />`;
@@ -117,6 +127,33 @@ function renderAd(item) {
       ${linksHtml}
     </div>
   </td></tr>`;
+}
+
+// אוספת את כל התמונות של המודעות בגיליון כדי לצרף אותן בפועל להודעה
+// (attachments עם content_id תואם למה ש-renderAd ייצר ב-cid:...).
+// נקראת מ-compiler.js רק כשבונים את המייל שבאמת יישלח.
+function collectImageAttachments(ads) {
+  const attachments = [];
+  ads.forEach(item => {
+    const images = JSON.parse(item.images_json || '[]');
+    images.forEach((src, index) => {
+      if (/^https?:\/\//i.test(src)) return; // תמיכה רק בתמונות שהועלו למערכת עצמה
+      const ext = path.extname(src).toLowerCase();
+      const mime = MIME_BY_EXT[ext];
+      if (!mime) return;
+      const filePath = path.join(UPLOAD_DIR, path.basename(src));
+      if (!fs.existsSync(filePath)) return;
+
+      attachments.push({
+        content: fs.readFileSync(filePath).toString('base64'),
+        filename: path.basename(src),
+        type: mime,
+        disposition: 'inline',
+        content_id: imageCid(item.id, index)
+      });
+    });
+  });
+  return attachments;
 }
 
 function renderTopic(item, accent) {
@@ -206,10 +243,10 @@ function renderInstructions(list, hasQA) {
   </td></tr>`;
 }
 
-function renderIssue({ list, qaPairs, ads, topics = [], unsubscribeToken }) {
+function renderIssue({ list, qaPairs, ads, topics = [], unsubscribeToken, useCid = false }) {
   const accent = list.accent_color || '#1D9E75';
   const qaHtml = qaPairs.map(({ question, answer }) => renderQA(question, answer, accent)).join('');
-  const adsHtml = ads.map(renderAd).join('');
+  const adsHtml = ads.map(item => renderAd(item, useCid)).join('');
   const topicsHtml = topics.map(t => renderTopic(t, accent)).join('');
   const unsubUrl = `${BASE_URL}/unsubscribe/${unsubscribeToken}`;
 
@@ -253,4 +290,4 @@ function renderIssue({ list, qaPairs, ads, topics = [], unsubscribeToken }) {
 </html>`;
 }
 
-module.exports = { renderIssue, escapeHtml };
+module.exports = { renderIssue, escapeHtml, collectImageAttachments };

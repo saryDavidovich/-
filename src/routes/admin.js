@@ -208,26 +208,31 @@ router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), async 
   const list = loadListOr404(req, res);
   if (!list) return;
 
-  const { subject, body, paid_tier, bg_color, text_color } = req.body;
-  const wc = (body || '').trim().split(/\s+/).filter(Boolean).length;
-  const useStyle = paid_tier === 'plus' || paid_tier === 'premium';
+  try {
+    const { subject, body, paid_tier, bg_color, text_color } = req.body;
+    const wc = (body || '').trim().split(/\s+/).filter(Boolean).length;
+    const useStyle = paid_tier === 'plus' || paid_tier === 'premium';
 
-  let images = [];
-  if (req.file) {
-    const { compressUploadedImage } = require('../imageProcessing');
-    const finalPath = await compressUploadedImage(req.file.path);
-    images = [`/uploads/${path.basename(finalPath)}`];
+    let images = [];
+    if (req.file) {
+      const { compressUploadedImage } = require('../imageProcessing');
+      const finalPath = await compressUploadedImage(req.file.path);
+      images = [`/uploads/${path.basename(finalPath)}`];
+    }
+
+    db.prepare(`
+      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, paid_tier, images_json, bg_color, text_color, approved_at)
+      VALUES (?, 'ad', 'approved', 'admin', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(
+      list.id, subject || '', body, body, wc, paid_tier || 'free', JSON.stringify(images),
+      useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null
+    );
+
+    res.redirect(`/admin/lists/${list.id}/preview`);
+  } catch (err) {
+    console.error('שגיאה בכתיבת מודעה ישירה:', err);
+    res.status(500).send('אירעה שגיאה בשמירת המודעה. נסה שוב, ואם הבעיה חוזרת, נסה בלי תמונה כדי לבודד את הבעיה.');
   }
-
-  db.prepare(`
-    INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, paid_tier, images_json, bg_color, text_color, approved_at)
-    VALUES (?, 'ad', 'approved', 'admin', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-  `).run(
-    list.id, subject || '', body, body, wc, paid_tier || 'free', JSON.stringify(images),
-    useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null
-  );
-
-  res.redirect(`/admin/lists/${list.id}/preview`);
 });
 
 // -------- תצוגה מקדימה חיה --------
@@ -449,12 +454,14 @@ router.post('/lists/:id/history/:issueId/resend', requireAuth, express.urlencode
     return res.redirect(`/admin/lists/${list.id}/history`);
   }
 
-  const { sendViaSendGrid } = require('../compiler');
+  const { sendViaSendGrid, rebuildIssueForResend } = require('../compiler');
+  const { html, attachments } = rebuildIssueForResend(issue);
+
   let sentCount = 0;
   const errors = [];
   for (const email of emails) {
     try {
-      await sendViaSendGrid(email, `${list.name} - שליחה חוזרת`, issue.html);
+      await sendViaSendGrid(email, `${list.name} - שליחה חוזרת`, html, attachments);
       sentCount++;
     } catch (err) {
       errors.push(`${email}: ${err.message}`);

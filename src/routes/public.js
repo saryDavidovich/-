@@ -60,23 +60,32 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
     });
   }
 
-  let images = [];
-  if (PAID_FEATURES_ENABLED && tier !== 'free' && req.file) {
-    const { compressUploadedImage } = require('../imageProcessing');
-    const finalPath = await compressUploadedImage(req.file.path);
-    images = [`/uploads/${path.basename(finalPath)}`];
+  try {
+    let images = [];
+    if (PAID_FEATURES_ENABLED && tier !== 'free' && req.file) {
+      const { compressUploadedImage } = require('../imageProcessing');
+      const finalPath = await compressUploadedImage(req.file.path);
+      images = [`/uploads/${path.basename(finalPath)}`];
+    }
+    const useStyle = PAID_FEATURES_ENABLED && tier !== 'free';
+
+    db.prepare(`
+      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color)
+      VALUES (?, 'ad', 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      list.id, email, subject || '', body, wc, tier, JSON.stringify(images),
+      useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null
+    );
+
+    res.render('ads/submit', { list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier, error: null, sent: true });
+  } catch (err) {
+    console.error('שגיאה בפרסום מודעה מהלקוח:', err);
+    res.render('ads/submit', {
+      list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier,
+      error: 'אירעה שגיאה בשליחת המודעה. נסה שוב, אולי בלי תמונה.',
+      sent: false
+    });
   }
-  const useStyle = PAID_FEATURES_ENABLED && tier !== 'free';
-
-  db.prepare(`
-    INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color)
-    VALUES (?, 'ad', 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    list.id, email, subject || '', body, wc, tier, JSON.stringify(images),
-    useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null
-  );
-
-  res.render('ads/submit', { list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier, error: null, sent: true });
 });
 
 // -------- פרסום נושא/מאמר (מהלקוח, בלי מייל) --------

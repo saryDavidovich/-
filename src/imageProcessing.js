@@ -24,7 +24,7 @@ async function compressUploadedImage(filePath) {
         .gif()
         .toBuffer();
       fs.writeFileSync(filePath, resized);
-      return;
+      return filePath;
     }
 
     // תמונות רגילות (png/jpg/webp) - ממירים ל-JPEG דחוס, זה הכי קטן.

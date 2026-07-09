@@ -1,16 +1,27 @@
 const db = require('./db');
-const { renderIssue } = require('./templates');
+const { renderIssue, collectImageAttachments } = require('./templates');
 const fetch = require('node-fetch');
 
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 const FROM_ADDRESS = process.env.FROM_ADDRESS || 'newsletter@example.com';
 const BRAND_NAME = process.env.BRAND_NAME || 'הרשימות שלנו';
 
-async function sendViaSendGrid(to, subject, html) {
+// attachments (אופציונלי): תמונות מוטמעות inline עם content_id, ראה
+// templates.js collectImageAttachments - זו הדרך שנתמכת כמעט בכל תוכנת
+// מייל (כולל Outlook), בניגוד ל-data URI שחלקן לא מציגות בכלל.
+async function sendViaSendGrid(to, subject, html, attachments = []) {
   if (!SENDGRID_API_KEY) {
-    console.log(`[DRY RUN - אין מפתח SendGrid מוגדר] היה נשלח מייל אל ${to}: ${subject}`);
+    console.log(`[DRY RUN - אין מפתח SendGrid מוגדר] היה נשלח מייל אל ${to}: ${subject} (${attachments.length} תמונות מצורפות)`);
     return { dryRun: true };
   }
+
+  const payload = {
+    personalizations: [{ to: [{ email: to }] }],
+    from: { email: FROM_ADDRESS, name: BRAND_NAME },
+    subject,
+    content: [{ type: 'text/html', value: html }]
+  };
+  if (attachments.length) payload.attachments = attachments;
 
   const resp = await fetch('https://api.sendgrid.com/v3/mail/send', {
     method: 'POST',
@@ -18,12 +29,7 @@ async function sendViaSendGrid(to, subject, html) {
       Authorization: `Bearer ${SENDGRID_API_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      personalizations: [{ to: [{ email: to }] }],
-      from: { email: FROM_ADDRESS, name: BRAND_NAME },
-      subject,
-      content: [{ type: 'text/html', value: html }]
-    })
+    body: JSON.stringify(payload)
   });
 
   if (!resp.ok) throw new Error(`SendGrid error: ${resp.status} ${await resp.text()}`);
@@ -83,8 +89,9 @@ async function compileAndSendIssue(list) {
   const issueRow = db.prepare(`INSERT INTO issues (list_id, status) VALUES (?, 'draft')`).run(list.id);
   const issueId = issueRow.lastInsertRowid;
 
-  // שומרים גם עותק ארכיוני עם טוקן כללי (לא אישי) - לצפייה/שיתוף באתר
-  const archiveHtml = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: 'archive' });
+  // שומרים עותק ארכיוני עם data URI (לא cid) - כי הארכיון נצפה בדפדפן,
+  // לא בתוכנת מייל, ואין שם "מצורפים" בכלל.
+  const archiveHtml = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: 'archive', useCid: false });
   db.prepare(`UPDATE issues SET html = ? WHERE id = ?`).run(archiveHtml, issueId);
 
   // Gmail וספקים אחרים חותכים מייל שעובר בערך 102KB ("[Message clipped]") -
@@ -97,10 +104,14 @@ async function compileAndSendIssue(list) {
     console.log(`גודל הגיליון של "${list.name}": ${sizeKB}KB`);
   }
 
+  // המייל שבאמת יוצא ללקוחות: תמונות כ-cid מצורף, לא data URI - נתמך
+  // בהרבה יותר תוכנות מייל (כולל Outlook).
+  const attachments = collectImageAttachments(ads);
+
   let sentCount = 0;
   for (const sub of subscribers) {
-    const html = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: sub.token });
-    await sendViaSendGrid(sub.email, `${list.name} - עדכון שבועי`, html);
+    const html = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: sub.token, useCid: true });
+    await sendViaSendGrid(sub.email, `${list.name} - עדכון שבועי`, html, attachments);
     sentCount++;
   }
 
@@ -116,8 +127,28 @@ async function compileAndSendIssue(list) {
   db.prepare(`UPDATE issues SET status = 'sent', sent_at = datetime('now'), recipient_count = ? WHERE id = ?`)
     .run(sentCount, issueId);
 
-  console.log(`נשלח גיליון לרשימת "${list.name}" ל-${sentCount} מנויים.`);
+  console.log(`נשלח גיליון לרשימת "${list.name}" ל-${sentCount} מנויים (${attachments.length} תמונות מצורפות).`);
   return issueId;
+}
+
+// שולפת מחדש את התוכן של גיליון שכבר נשלח (לפי issue_id ששמור על כל
+// פריט ששויך אליו), כדי לאפשר שליחה חוזרת עם תמונות תקינות (cid), ולא
+// רק את ה-HTML הארכיוני (data URI) שלא תמיד מוצג נכון בתוכנת מייל.
+function rebuildIssueForResend(issue) {
+  const list = db.prepare('SELECT * FROM lists WHERE id = ?').get(issue.list_id);
+  const items = db.prepare('SELECT * FROM items WHERE issue_id = ?').all(issue.id);
+
+  const questions = items.filter(i => i.type === 'question');
+  const answersById = {};
+  items.filter(i => i.type === 'answer').forEach(a => { answersById[a.parent_id] = a; });
+
+  const qaPairs = questions.map(q => ({ question: q, answer: answersById[q.id] || null }));
+  const ads = items.filter(i => i.type === 'ad');
+  const topics = items.filter(i => i.type === 'article');
+
+  const html = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: 'resend', useCid: true });
+  const attachments = collectImageAttachments(ads);
+  return { html, attachments };
 }
 
 async function runWeeklyCompiler() {
@@ -131,4 +162,4 @@ async function runWeeklyCompiler() {
   }
 }
 
-module.exports = { runWeeklyCompiler, compileAndSendIssue, sendViaSendGrid };
+module.exports = { runWeeklyCompiler, compileAndSendIssue, sendViaSendGrid, rebuildIssueForResend };
