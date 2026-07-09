@@ -151,7 +151,8 @@ function renderIssue({ list, qaPairs, ads, topics = [], unsubscribeToken }) {
       <td style="padding:18px 24px;background:#f6f5f1;text-align:center;">
         <div style="font-size:12px;color:#888780;">
           קיבלת מייל זה כי אתה רשום לרשימת "${escapeHtml(list.name)}" של ${escapeHtml(BRAND_NAME)}.<br>
-          <a href="${unsubUrl}" style="color:#888780;">להסרה מרשימה זו</a>
+          <a href="${unsubUrl}" style="color:#888780;">להסרה מרשימה זו</a> ·
+          <a href="${BASE_URL}/archive/${list.slug}" style="color:#888780;">גיליונות קודמים</a>
         </div>
       </td>
     </tr>

@@ -329,4 +329,24 @@ router.post('/lists/:id/send-now', requireAuth, async (req, res) => {
   res.redirect('/admin');
 });
 
+// -------- היסטוריית גיליונות שנשלחו (כלום לא נמחק - רק לא היה איפה לראות) --------
+router.get('/lists/:id/history', requireAuth, (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+
+  const issues = db.prepare(`
+    SELECT * FROM issues WHERE list_id = ? AND status = 'sent' ORDER BY sent_at DESC
+  `).all(list.id);
+
+  res.render('admin/history', { list, issues, allLists: getAllLists() });
+});
+
+router.get('/lists/:id/history/:issueId', requireAuth, (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+  const issue = db.prepare('SELECT * FROM issues WHERE id = ? AND list_id = ?').get(req.params.issueId, list.id);
+  if (!issue) return res.status(404).send('גיליון לא נמצא');
+  res.send(issue.html);
+});
+
 module.exports = router;

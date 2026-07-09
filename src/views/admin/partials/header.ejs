@@ -26,6 +26,7 @@
           <a class="side-sublink <%= (typeof activeListId !== 'undefined' && activeListId == l.id && page === 'compose-ad') ? 'active' : '' %>" href="/admin/lists/<%= l.id %>/compose/ad">כתיבת מודעה</a>
           <a class="side-sublink <%= (typeof activeListId !== 'undefined' && activeListId == l.id && page === 'preview') ? 'active' : '' %>" href="/admin/lists/<%= l.id %>/preview" target="_blank">תצוגה מקדימה</a>
           <a class="side-sublink <%= (typeof activeListId !== 'undefined' && activeListId == l.id && page === 'subscribers') ? 'active' : '' %>" href="/admin/lists/<%= l.id %>/subscribers">מנויים</a>
+          <a class="side-sublink <%= (typeof activeListId !== 'undefined' && activeListId == l.id && page === 'history') ? 'active' : '' %>" href="/admin/lists/<%= l.id %>/history">היסטוריה</a>
           <a class="side-sublink <%= (typeof activeListId !== 'undefined' && activeListId == l.id && page === 'settings') ? 'active' : '' %>" href="/admin/lists/<%= l.id %>/settings">הגדרות</a>
         </div>
       <% }) %>

@@ -1,0 +1,16 @@
+<%- include('partials/header', { pageTitle: 'היסטוריה - ' + list.name, page: 'history', activeListId: list.id, allLists: allLists }) %>
+
+  <%- include('partials/tabbar', { list, page: 'history' }) %>
+
+  <% if (issues.length === 0) { %>
+    <div class="card">עדיין לא נשלח אף גיליון לרשימה זו.</div>
+  <% } %>
+
+  <% issues.forEach(issue => { %>
+    <div class="list-row">
+      <span>נשלח ב-<%= issue.sent_at %> · <%= issue.recipient_count %> נמענים</span>
+      <a class="btn secondary" href="/admin/lists/<%= list.id %>/history/<%= issue.id %>" target="_blank">צפייה בגיליון</a>
+    </div>
+  <% }) %>
+
+<%- include('partials/footer') %>

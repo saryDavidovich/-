@@ -135,4 +135,24 @@ router.get('/unsubscribe/:token', (req, res) => {
   res.send('הוסרת בהצלחה מרשימת התפוצה.');
 });
 
+// -------- ארכיון ציבורי - הלקוחות יכולים לראות גיליונות עבר --------
+router.get('/archive/:slug', (req, res) => {
+  const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
+  if (!list) return res.status(404).send('רשימה לא נמצאה');
+
+  const issues = db.prepare(`
+    SELECT id, sent_at FROM issues WHERE list_id = ? AND status = 'sent' ORDER BY sent_at DESC
+  `).all(list.id);
+
+  res.render('archive_list', { list, issues });
+});
+
+router.get('/archive/:slug/:issueId', (req, res) => {
+  const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
+  if (!list) return res.status(404).send('רשימה לא נמצאה');
+  const issue = db.prepare('SELECT * FROM issues WHERE id = ? AND list_id = ? AND status = ?').get(req.params.issueId, list.id, 'sent');
+  if (!issue) return res.status(404).send('גיליון לא נמצא');
+  res.send(issue.html);
+});
+
 module.exports = router;
