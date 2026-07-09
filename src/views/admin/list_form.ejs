@@ -1,10 +1,7 @@
-<!DOCTYPE html>
-<html dir="rtl" lang="he">
-<head><meta charset="utf-8"><title>נושא חדש</title><link rel="stylesheet" href="/admin.css"></head>
-<body>
-<div class="container" style="max-width:480px;">
+<%- include('partials/header', { pageTitle: 'נושא חדש', page: 'new-list', allLists: allLists }) %>
+
   <h1>יצירת נושא / רשימה חדשה</h1>
-  <div class="card">
+  <div class="card" style="max-width:420px;">
     <form method="POST" action="/admin/lists/new">
       <label>שם הרשימה (מוצג ללקוחות)</label>
       <input type="text" name="name" placeholder="לדוגמה: הורות ומשפחה" required />
@@ -22,6 +19,5 @@
       <a href="/admin" style="margin-inline-start:10px;">ביטול</a>
     </form>
   </div>
-</div>
-</body>
-</html>
+
+<%- include('partials/footer') %>

@@ -1,0 +1,27 @@
+<%- include('partials/header', { pageTitle: 'כתיבת מודעה - ' + list.name, page: 'compose-ad', activeListId: list.id, allLists: allLists }) %>
+
+  <%- include('partials/tabbar', { list, page: 'compose-ad' }) %>
+
+  <div class="card">
+    <p style="color:#888780;font-size:13px;margin-top:0;">
+      כתיבה ישירה כאן מדלגת על תור האישור - המודעה נכנסת ישר כ"מאושרת".
+    </p>
+    <form method="POST" action="/admin/lists/<%= list.id %>/compose/ad">
+      <label>כותרת (אופציונלי)</label>
+      <input type="text" name="subject" />
+
+      <label>תוכן המודעה</label>
+      <textarea name="body" rows="4" required></textarea>
+
+      <label>רמת מודעה</label>
+      <select name="paid_tier">
+        <option value="free">חינם</option>
+        <option value="plus">מודגשת (עתידי - בתשלום)</option>
+        <option value="premium">פרימיום (עתידי - בתשלום)</option>
+      </select>
+
+      <button class="btn" type="submit">הוסף לגיליון הבא</button>
+    </form>
+  </div>
+
+<%- include('partials/footer') %>

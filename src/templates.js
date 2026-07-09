@@ -45,7 +45,8 @@ function renderAd(item) {
 function renderQA(question, answer, accent) {
   const qBody = escapeHtml(question.body_edited ?? question.body_raw).replace(/\n/g, '<br>');
   const aBody = answer ? escapeHtml(answer.body_edited ?? answer.body_raw).replace(/\n/g, '<br>') : '';
-  const replyUrl = `mailto:reply+${question.id}@REPLYDOMAIN?subject=${encodeURIComponent('תגובה: ' + (question.subject || ''))}`;
+  const replyDomain = process.env.INBOUND_DOMAIN || 'yourdomain.com';
+  const replyUrl = `mailto:reply+${question.id}@${replyDomain}?subject=${encodeURIComponent('תגובה: ' + (question.subject || ''))}`;
 
   return `
   <tr><td style="padding:16px 0;border-bottom:1px solid #eceae3;">

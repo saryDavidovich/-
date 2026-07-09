@@ -1,10 +1,6 @@
-<!DOCTYPE html>
-<html dir="rtl" lang="he">
-<head><meta charset="utf-8"><title>תור אישור - <%= list.name %></title><link rel="stylesheet" href="/admin.css"></head>
-<body>
-<div class="container">
-  <a href="/admin">&rarr; חזרה לרשימות</a>
-  <h1>תור אישור: <%= list.name %></h1>
+<%- include('partials/header', { pageTitle: 'תור אישור - ' + list.name, page: 'queue', activeListId: list.id, allLists: allLists }) %>
+
+  <%- include('partials/tabbar', { list, page: 'queue' }) %>
 
   <% if (items.length === 0) { %>
     <div class="card">אין פריטים ממתינים לאישור כרגע.</div>
@@ -51,6 +47,5 @@
       <% } %>
     </div>
   <% }) %>
-</div>
-</body>
-</html>
+
+<%- include('partials/footer') %>

@@ -1,14 +1,8 @@
-<!DOCTYPE html>
-<html dir="rtl" lang="he">
-<head><meta charset="utf-8"><title>פאנל ניהול</title><link rel="stylesheet" href="/admin.css"></head>
-<body>
-<div class="container">
+<%- include('partials/header', { pageTitle: 'לוח בקרה', page: 'dashboard', allLists: lists }) %>
+
   <div style="display:flex;justify-content:space-between;align-items:center;">
-    <h1>הרשימות שלי</h1>
-    <div style="display:flex;gap:8px;">
-      <a class="btn" href="/admin/lists/new">+ נושא חדש</a>
-      <form method="POST" action="/admin/logout"><button class="btn secondary" type="submit">יציאה</button></form>
-    </div>
+    <h1>לוח בקרה</h1>
+    <a class="btn" href="/admin/lists/new">+ נושא חדש</a>
   </div>
 
   <% if (flash) { %>
@@ -32,9 +26,10 @@
           <% if (!list.active) { %><span class="pill">מושבת</span><% } %>
         </div>
         <div style="display:flex;gap:8px;">
-          <a class="btn" href="/admin/queue/<%= list.id %>">תור אישור</a>
+          <a class="btn" href="/admin/lists/<%= list.id %>/queue">תור אישור</a>
+          <a class="btn secondary" href="/admin/lists/<%= list.id %>/preview" target="_blank">תצוגה מקדימה</a>
           <form method="POST" action="/admin/lists/<%= list.id %>/send-now" onsubmit="return confirm('לשלוח עכשיו גיליון אמיתי לכל המנויים ברשימה זו?');">
-            <button class="btn secondary" type="submit">שלח עכשיו (בדיקה)</button>
+            <button class="btn secondary" type="submit">שלח עכשיו</button>
           </form>
           <form method="POST" action="/admin/lists/<%= list.id %>/toggle">
             <button class="btn secondary" type="submit"><%= list.active ? 'השבת' : 'הפעל' %></button>
@@ -49,6 +44,5 @@
       </div>
     </div>
   <% }) %>
-</div>
-</body>
-</html>
+
+<%- include('partials/footer') %>

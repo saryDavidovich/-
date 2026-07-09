@@ -62,3 +62,57 @@ input, textarea, select {
 }
 .item-meta { font-size: 12px; color: #888780; margin-bottom: 6px; }
 .actions { display: flex; gap: 8px; margin-top: 8px; }
+
+/* ---------- Sidebar layout ---------- */
+.app-shell { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: #24231f;
+  color: #eceae3;
+  padding: 20px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sidebar-brand { font-size: 16px; font-weight: 700; color: #fff; margin-bottom: 14px; padding: 0 6px; }
+.side-link {
+  display: block;
+  color: #d8d6cc;
+  text-decoration: none;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+.side-link:hover { background: #34332d; }
+.side-link.active { background: #1D9E75; color: #fff; }
+.side-link.as-button { background: none; border: none; width: 100%; text-align: right; cursor: pointer; font-family: inherit; }
+.sidebar-divider { height: 1px; background: #38372f; margin: 10px 0; }
+.sidebar-list-group { margin-bottom: 10px; }
+.sidebar-list-name {
+  font-size: 12px;
+  color: #a6a498;
+  padding: 6px 10px 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sidebar-list-name .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.side-sublink {
+  display: block;
+  color: #c2c0b4;
+  text-decoration: none;
+  font-size: 13px;
+  padding: 6px 10px 6px 10px;
+  margin-right: 8px;
+  border-radius: 5px;
+}
+.side-sublink:hover { background: #34332d; }
+.side-sublink.active { background: #3a3933; color: #fff; }
+.content { flex: 1; padding: 24px 32px; max-width: 900px; }
+
+/* tabs used inside list detail pages */
+.tabbar { display: flex; gap: 6px; margin-bottom: 18px; border-bottom: 1px solid #e3e1d8; }
+.tabbar a { padding: 8px 14px; text-decoration: none; color: #5f5e5a; font-size: 14px; border-bottom: 2px solid transparent; }
+.tabbar a.active { color: #1D9E75; border-bottom-color: #1D9E75; font-weight: 600; }

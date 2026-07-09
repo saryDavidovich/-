@@ -1,0 +1,20 @@
+<%- include('partials/header', { pageTitle: 'מנויים - ' + list.name, page: 'subscribers', activeListId: list.id, allLists: allLists }) %>
+
+  <%- include('partials/tabbar', { list, page: 'subscribers' }) %>
+
+  <div class="card">
+    <strong><%= subscribers.length %></strong> מנויים פעילים ברשימה זו.
+  </div>
+
+  <% if (subscribers.length === 0) { %>
+    <div class="card">עדיין אין מנויים. שתף את קישור ההרשמה: <code>/subscribe/<%= list.slug %></code></div>
+  <% } %>
+
+  <% subscribers.forEach(sub => { %>
+    <div class="list-row">
+      <span><%= sub.email %></span>
+      <span class="item-meta">נרשם ב-<%= sub.created_at %></span>
+    </div>
+  <% }) %>
+
+<%- include('partials/footer') %>
