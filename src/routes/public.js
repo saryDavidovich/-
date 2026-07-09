@@ -110,9 +110,19 @@ router.post('/subscribe/:slug', express.urlencoded({ extended: true }), (req, re
   if (!email) return res.status(400).send('נא להזין מייל');
 
   try {
-    db.prepare(`INSERT INTO subscribers (list_id, email, confirmed, token) VALUES (?, ?, 1, ?)`)
+    const result = db.prepare(`INSERT INTO subscribers (list_id, email, confirmed, token) VALUES (?, ?, 1, ?)`)
       .run(list.id, email, uuidv4());
-  } catch (e) { /* כבר רשום - מתעלמים */ }
+    console.log(`מנוי חדש נרשם: ${email} לרשימה "${list.name}" (list_id=${list.id}), שורה חדשה מספר ${result.lastInsertRowid}`);
+  } catch (e) {
+    // רק שגיאת "כבר רשום" (UNIQUE constraint) מתעלמים ממנה בשקט - כל שגיאה
+    // אחרת היא בעיה אמיתית שצריך לדעת עליה, לא להסתיר.
+    if (e.code === 'SQLITE_CONSTRAINT_UNIQUE' || /UNIQUE constraint/.test(e.message)) {
+      console.log(`מנוי כבר קיים: ${email} לרשימה "${list.name}" - לא נוצרה שורה כפולה.`);
+    } else {
+      console.error(`שגיאה אמיתית בהרשמת מנוי ${email} לרשימה "${list.name}":`, e);
+      return res.status(500).send('אירעה שגיאה בהרשמה. נסה שוב מאוחר יותר.');
+    }
+  }
 
   res.render('subscribe', { list, subscribed: true });
 });
