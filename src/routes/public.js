@@ -44,6 +44,12 @@ router.post('/ads/:slug', express.urlencoded({ extended: true }), (req, res) => 
 // -------- הרשמה להצטרפות לרשימה --------
 const { v4: uuidv4 } = require('uuid');
 
+router.get('/subscribe/:slug', (req, res) => {
+  const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
+  if (!list) return res.status(404).send('רשימה לא נמצאה');
+  res.render('subscribe', { list, subscribed: false });
+});
+
 router.post('/subscribe/:slug', express.urlencoded({ extended: true }), (req, res) => {
   const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
   if (!list) return res.status(404).send('רשימה לא נמצאה');
@@ -55,7 +61,7 @@ router.post('/subscribe/:slug', express.urlencoded({ extended: true }), (req, re
       .run(list.id, email, uuidv4());
   } catch (e) { /* כבר רשום - מתעלמים */ }
 
-  res.send('נרשמת בהצלחה! תתחיל לקבל את הניוזלטר בשבוע הקרוב.');
+  res.render('subscribe', { list, subscribed: true });
 });
 
 // -------- הסרה מרשימה --------

@@ -11,6 +11,10 @@
     </div>
   </div>
 
+  <% if (flash) { %>
+    <div class="card" style="background:#eefaf3;border-color:#8fd9b6;">✓ <%= flash %></div>
+  <% } %>
+
   <% if (lists.length === 0) { %>
     <div class="card">עדיין אין רשימות. לחץ "נושא חדש" כדי להתחיל.</div>
   <% } %>
@@ -29,15 +33,19 @@
         </div>
         <div style="display:flex;gap:8px;">
           <a class="btn" href="/admin/queue/<%= list.id %>">תור אישור</a>
+          <form method="POST" action="/admin/lists/<%= list.id %>/send-now" onsubmit="return confirm('לשלוח עכשיו גיליון אמיתי לכל המנויים ברשימה זו?');">
+            <button class="btn secondary" type="submit">שלח עכשיו (בדיקה)</button>
+          </form>
           <form method="POST" action="/admin/lists/<%= list.id %>/toggle">
             <button class="btn secondary" type="submit"><%= list.active ? 'השבת' : 'הפעל' %></button>
           </form>
         </div>
       </div>
       <div style="font-size:12px;color:#888780;margin-top:6px;">
-        קליטת שאלות: <code>ask+<%= list.slug %>@yourdomain.com</code> ·
-        קליטת מודעות: <code>ads+<%= list.slug %>@yourdomain.com</code> ·
-        טופס מודעה: <a href="/ads/<%= list.slug %>" target="_blank">/ads/<%= list.slug %></a>
+        קליטת שאלות: <code>ask+<%= list.slug %>@<%= inboundDomain %></code> ·
+        קליטת מודעות: <code>ads+<%= list.slug %>@<%= inboundDomain %></code> ·
+        טופס מודעה: <a href="/ads/<%= list.slug %>" target="_blank">/ads/<%= list.slug %></a> ·
+        הרשמה: <a href="/subscribe/<%= list.slug %>" target="_blank">/subscribe/<%= list.slug %></a>
       </div>
     </div>
   <% }) %>

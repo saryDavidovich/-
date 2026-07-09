@@ -31,7 +31,10 @@ router.get('/', requireAuth, (req, res) => {
       (SELECT COUNT(*) FROM subscribers WHERE list_id = l.id AND unsubscribed = 0) AS subscriber_count
     FROM lists l ORDER BY l.created_at DESC
   `).all();
-  res.render('admin/dashboard', { lists });
+  const flash = req.session.flash || null;
+  delete req.session.flash;
+  const inboundDomain = process.env.INBOUND_DOMAIN || 'yourdomain.com';
+  res.render('admin/dashboard', { lists, flash, inboundDomain });
 });
 
 // -------- Lists (topics) management --------
@@ -94,6 +97,26 @@ router.post('/items/:id/reject', requireAuth, (req, res) => {
   if (!item) return res.status(404).send('לא נמצא');
   db.prepare(`UPDATE items SET status = 'rejected' WHERE id = ?`).run(item.id);
   res.redirect(`/admin/queue/${item.list_id}`);
+});
+
+// -------- שליחה ידנית לבדיקה (בלי לחכות לתזמון השבועי) --------
+router.post('/lists/:id/send-now', requireAuth, async (req, res) => {
+  const list = db.prepare('SELECT * FROM lists WHERE id = ?').get(req.params.id);
+  if (!list) return res.status(404).send('רשימה לא נמצאה');
+
+  const { compileAndSendIssue } = require('../compiler');
+  try {
+    const issueId = await compileAndSendIssue(list);
+    if (issueId === null) {
+      req.session.flash = 'אין תוכן מאושר לשליחה כרגע - אשר לפחות פריט אחד בתור לפני שליחה.';
+    } else {
+      const issue = db.prepare('SELECT * FROM issues WHERE id = ?').get(issueId);
+      req.session.flash = `נשלח בהצלחה ל-${issue.recipient_count} מנויים.`;
+    }
+  } catch (err) {
+    req.session.flash = `שגיאה בשליחה: ${err.message}`;
+  }
+  res.redirect('/admin');
 });
 
 module.exports = router;
