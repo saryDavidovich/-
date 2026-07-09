@@ -5,6 +5,29 @@ const fs = require('fs');
 const DATA_DIR = path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
+// לוג אבחוני - תראה את זה ב-Railway logs. משווים את הנתיב הזה ל-Mount Path
+// שהגדרת ל-Volume: אם הם לא זהים, זו הסיבה שהנתונים לא נשמרים.
+console.log('=== אבחון מסד נתונים ===');
+console.log('נתיב מוחלט לקובץ מסד הנתונים:', path.join(DATA_DIR, 'newsletter.db'));
+console.log('תיקיית הנתונים (DATA_DIR):', DATA_DIR);
+console.log('תיקיית העבודה הנוכחית (cwd):', process.cwd());
+console.log('========================');
+
+// בודקים אם התיקייה אכן ניתנת לכתיבה, ומשאירים "עקבה" שתעזור לבדוק בין
+// דיפלוימנטים אם זו אותה תיקייה (persistent) או תיקייה חדשה שנוצרה מאפס בכל פעם.
+try {
+  const markerPath = path.join(DATA_DIR, '.startup-marker.txt');
+  const previousMarker = fs.existsSync(markerPath) ? fs.readFileSync(markerPath, 'utf8') : null;
+  if (previousMarker) {
+    console.log('נמצאה עקבה מהפעלה קודמת - זה סימן טוב, ה-Volume כנראה מחובר נכון:', previousMarker.trim());
+  } else {
+    console.log('לא נמצאה עקבה מהפעלה קודמת - אם זו לא ההפעלה הראשונה אי-פעם, זה סימן שה-Volume לא מחובר.');
+  }
+  fs.writeFileSync(markerPath, `הופעל לאחרונה ב-${new Date().toISOString()}\n`);
+} catch (err) {
+  console.error('שגיאה בכתיבה לתיקיית הנתונים - כנראה בעיית הרשאות:', err.message);
+}
+
 const db = new Database(path.join(DATA_DIR, 'newsletter.db'));
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
