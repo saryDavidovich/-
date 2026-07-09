@@ -7,9 +7,18 @@
 // כ-mailto בלבד, כדי שגם לקוחות עם גישה מוגבלת לדפדפן (כמו "נטו מייל")
 // יוכלו להשתמש בכל התכונות בלי לצאת מתוכנת המייל שלהם.
 
+const fs = require('fs');
+const path = require('path');
+
 const BRAND_NAME = process.env.BRAND_NAME || 'הרשימות שלנו';
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 const INBOUND_DOMAIN = process.env.INBOUND_DOMAIN || 'yourdomain.com';
+const UPLOAD_DIR = path.join(__dirname, '..', 'data', 'uploads');
+
+const MIME_BY_EXT = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif', '.webp': 'image/webp'
+};
 
 function escapeHtml(str = '') {
   return String(str)
@@ -21,6 +30,31 @@ function escapeHtml(str = '') {
 function absoluteUrl(path) {
   if (/^https?:\/\//i.test(path)) return path;
   return `${BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
+// הופך תמונה שהועלתה למערכת (נתיב כמו /uploads/xxx.png) למחרוזת base64
+// המוטמעת ישירות בתוך ה-HTML של המייל עצמו (data URI). כך אין שום קובץ
+// נפרד שהמייל "מצביע" עליו מבחוץ - התמונה היא חלק מהטקסט של המייל,
+// ולכן אין לשום מסנן (כמו נטפרי) מה לסרוק או לעכב בנפרד, והיא מוצגת מיד.
+function embedImageAsDataUri(relativePath) {
+  try {
+    // תומך רק בתמונות שהועלו למערכת שלנו עצמה (לא ב-URL חיצוני), כי רק
+    // אותן אפשר לקרוא ישירות מהדיסק בזמן בניית הגיליון.
+    if (/^https?:\/\//i.test(relativePath)) return null;
+    const ext = path.extname(relativePath).toLowerCase();
+    const mime = MIME_BY_EXT[ext];
+    if (!mime) return null;
+
+    const filename = path.basename(relativePath);
+    const filePath = path.join(UPLOAD_DIR, filename);
+    if (!fs.existsSync(filePath)) return null;
+
+    const buffer = fs.readFileSync(filePath);
+    return `data:${mime};base64,${buffer.toString('base64')}`;
+  } catch (err) {
+    console.error('שגיאה בהטמעת תמונה כ-base64:', err.message);
+    return null;
+  }
 }
 
 function mailto(action, slug, subjectText) {
@@ -44,12 +78,18 @@ function renderAd(item) {
     ? `background:${bg};color:${fg};padding:14px;border-radius:8px;`
     : `color:${fg};padding:14px 0;`;
 
-  // חשוב: לא מטמיעים את התמונה כ-<img> שנטען אוטומטית - זה גורם לחלק
-  // מהמסננים (כמו נטפרי בצד הלקוח) לעכב את המייל שעות עד שהתמונה נסרקת.
-  // במקום זה, קישור טקסט רגיל שנפתח רק בלחיצה יזומה של הלקוח.
-  const imagesHtml = images.length
-    ? `<div style="margin-top:8px;">${images.map(src => `<a href="${escapeHtml(absoluteUrl(src))}" style="display:inline-block;font-size:13px;color:${item.bg_color ? fg : '#185fa5'};text-decoration:underline;">לצפייה בתמונה &#8599;</a>`).join('<br>')}</div>`
-    : '';
+  // התמונה מוטמעת ישירות בתוך ה-HTML (base64) - היא חלק מגוף המייל עצמו,
+  // לא קובץ נפרד שנטען מבחוץ. היא מוצגת מיד בראש המודעה, בדיוק כמו
+  // בפרסומת רגילה. אם ההטמעה נכשלת מסיבה כלשהי (למשל קובץ לא נמצא),
+  // נופלים בחזרה לקישור טקסט רגיל במקום להשאיר את המודעה בלי תמונה בשקט.
+  const imagesHtml = images.map(src => {
+    const dataUri = embedImageAsDataUri(src);
+    if (dataUri) {
+      return `<img src="${dataUri}" alt="" style="max-width:100%;border-radius:8px;margin-bottom:8px;display:block;" />`;
+    }
+    return `<a href="${escapeHtml(absoluteUrl(src))}" style="display:inline-block;font-size:13px;color:${item.bg_color ? fg : '#185fa5'};text-decoration:underline;margin-bottom:8px;">לצפייה בתמונה &#8599;</a>`;
+  }).join('');
+
   const linksHtml = links.length
     ? `<div style="margin-top:8px;">${links.map(l => `<a href="${escapeHtml(l)}" style="color:${item.bg_color ? fg : '#185fa5'};">${escapeHtml(l)}</a>`).join('<br>')}</div>`
     : '';
@@ -57,9 +97,9 @@ function renderAd(item) {
   return `
   <tr><td style="border-bottom:1px solid #eceae3;">
     <div style="font-size:15px;line-height:1.6;${boxStyle}">
+      ${imagesHtml}
       ${item.subject ? `<strong>${escapeHtml(item.subject)}</strong>${wordLimitBadge(item)}<br>` : wordLimitBadge(item)}
       ${body}
-      ${imagesHtml}
       ${linksHtml}
     </div>
   </td></tr>`;
