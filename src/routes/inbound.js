@@ -10,12 +10,18 @@ const db = require('../db');
 // Parse. כל מייל שמגיע ל-domain שלך מנותב הנה, וה"פעולה" מזוהה לפי הכתובת
 // אליה המייל נשלח (plus-addressing), למשל:
 //
-//   ask+parenting@mail.yourdomain.com     -> שאלה חדשה לרשימת "הורות"
-//   ads+parenting@mail.yourdomain.com     -> מודעה חדשה ללוח של "הורות"
-//   topic+parenting@mail.yourdomain.com   -> נושא/מאמר חדש לרשימת "הורות"
-//   reply+482@mail.yourdomain.com         -> תשובה לשאלה מספר 482 (בכל רשימה)
+//   ask+parenting@mail.yourdomain.com          -> שאלה חדשה לרשימת "הורות"
+//   ads+parenting@mail.yourdomain.com          -> מודעת שורה חינם
+//   adsplus+parenting@mail.yourdomain.com      -> מודעה מודגשת
+//   adspremium+parenting@mail.yourdomain.com   -> מודעה פרימיום
+//   topic+parenting@mail.yourdomain.com        -> נושא/מאמר חדש
+//   reply+482@mail.yourdomain.com              -> תשובה לשאלה מספר 482
+//   join+parenting@mail.yourdomain.com         -> הצטרפות לרשימה (לפי כתובת השולח)
+//   leave+parenting@mail.yourdomain.com        -> הסרה מרשימה (לפי כתובת השולח)
 //
 // כל זה קורה בלי שום מגע ידני - הפריט פשוט נוחת בתור ההמתנה שלך לאישור.
+// כל התהליך מתבסס על תגובות/שליחות מייל בלבד, כדי שגם לקוחות עם גישה
+// מוגבלת לדפדפן (למשל "נטו מייל") יוכלו להשתמש בכל התכונות.
 // -----------------------------------------------------------------------
 
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
@@ -93,23 +99,25 @@ router.post('/inbound', upload.any(), (req, res) => {
       .filter(f => /^image\//.test(f.mimetype))
       .map(f => `/uploads/${f.filename}`);
 
-    if (action === 'ask' || action === 'ads' || action === 'topic') {
+    if (action === 'ask' || action === 'ads' || action === 'adsplus' || action === 'adspremium' || action === 'topic') {
       const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(extra);
       if (!list) {
         console.warn(`לא נמצאה רשימה פעילה עם slug="${extra}" (פעולה: ${action})`);
         return res.status(200).send('ignored: unknown list');
       }
 
-      const typeMap = { ask: 'question', ads: 'ad', topic: 'article' };
+      const typeMap = { ask: 'question', ads: 'ad', adsplus: 'ad', adspremium: 'ad', topic: 'article' };
+      const tierMap = { ads: 'free', adsplus: 'plus', adspremium: 'premium' };
       const type = typeMap[action];
+      const tier = tierMap[action] || 'free';
       const links = extractLinks(text);
 
       db.prepare(`
-        INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, images_json, links_json)
-        VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?)
-      `).run(list.id, type, fromEmail, subject, text, countWords(text), JSON.stringify(attachedImages), JSON.stringify(links));
+        INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, links_json)
+        VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)
+      `).run(list.id, type, fromEmail, subject, text, countWords(text), tier, JSON.stringify(attachedImages), JSON.stringify(links));
 
-      console.log(`נקלט בהצלחה: ${type} לרשימת "${list.name}" מאת ${fromEmail}`);
+      console.log(`נקלט בהצלחה: ${type} (רמה: ${tier}) לרשימת "${list.name}" מאת ${fromEmail}`);
       return res.status(200).send('queued');
     }
 
@@ -128,6 +136,34 @@ router.post('/inbound', upload.any(), (req, res) => {
 
       console.log(`תגובה נקלטה בהצלחה לשאלה #${question.id} מאת ${fromEmail}`);
       return res.status(200).send('queued');
+    }
+
+    // הצטרפות/הסרה דרך מייל בלבד - לא צריך שום קישור או טוקן, כתובת השולח
+    // עצמה (from) היא מה שמזהה את המנוי. שימושי במיוחד למי שאין לו גישה
+    // נוחה לדפדפן.
+    if (action === 'join') {
+      const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(extra);
+      if (!list) {
+        console.warn(`ניסיון הצטרפות לרשימה לא קיימת: slug="${extra}"`);
+        return res.status(200).send('ignored: unknown list');
+      }
+      try {
+        db.prepare(`INSERT INTO subscribers (list_id, email, confirmed, token) VALUES (?, ?, 1, ?)`)
+          .run(list.id, fromEmail, require('uuid').v4());
+        console.log(`הצטרפות חדשה במייל: ${fromEmail} לרשימת "${list.name}"`);
+      } catch (e) {
+        console.log(`${fromEmail} כבר רשום לרשימת "${list.name}" - לא נוצרה כפילות.`);
+      }
+      return res.status(200).send('joined');
+    }
+
+    if (action === 'leave') {
+      const list = db.prepare('SELECT * FROM lists WHERE slug = ?').get(extra);
+      if (!list) return res.status(200).send('ignored: unknown list');
+      const result = db.prepare(`UPDATE subscribers SET unsubscribed = 1 WHERE list_id = ? AND email = ?`)
+        .run(list.id, fromEmail);
+      console.log(`הסרה במייל: ${fromEmail} מרשימת "${list.name}" (${result.changes} שורות עודכנו)`);
+      return res.status(200).send('left');
     }
 
     console.warn(`פעולה לא מוכרת: "${action}"`);

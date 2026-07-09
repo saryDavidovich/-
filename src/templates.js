@@ -2,6 +2,10 @@
 // ההבדל בין רשימה לרשימה הוא רק צבע ההדגשה (accent) ושם הרשימה בכותרת,
 // לא לוגו/פריסה/גופן שונה. זה מה שגורם לזה להרגיש כמו גוף אחד ומקצועי,
 // ולא כמו כמה אתרים חובבניים שונים.
+//
+// עיקרון מנחה: כל פעולה (שאלה, מודעה, הצטרפות, הסרה, תגובה) ניתנת לביצוע
+// כ-mailto בלבד, כדי שגם לקוחות עם גישה מוגבלת לדפדפן (כמו "נטו מייל")
+// יוכלו להשתמש בכל התכונות בלי לצאת מתוכנת המייל שלהם.
 
 const BRAND_NAME = process.env.BRAND_NAME || 'הרשימות שלנו';
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
@@ -15,9 +19,12 @@ function escapeHtml(str = '') {
 }
 
 function absoluteUrl(path) {
-  // תומך גם בקישורי תמונה יחסיים (/uploads/...) שהועלו למערכת עצמה
   if (/^https?:\/\//i.test(path)) return path;
   return `${BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+}
+
+function mailto(action, slug, subjectText) {
+  return `mailto:${action}+${slug}@${INBOUND_DOMAIN}?subject=${encodeURIComponent(subjectText)}`;
 }
 
 function wordLimitBadge(item) {
@@ -31,15 +38,17 @@ function renderAd(item) {
   const links = JSON.parse(item.links_json || '[]');
   const body = escapeHtml(item.body_edited ?? item.body_raw).replace(/\n/g, '<br>');
 
-  // מודעות מודגשות/פרימיום יכולות לקבל צבע רקע וטקסט מותאם אישית
   const bg = item.bg_color || 'transparent';
   const fg = item.text_color || '#2c2c2a';
   const boxStyle = item.bg_color
     ? `background:${bg};color:${fg};padding:14px;border-radius:8px;`
     : `color:${fg};padding:14px 0;`;
 
+  // חשוב: לא מטמיעים את התמונה כ-<img> שנטען אוטומטית - זה גורם לחלק
+  // מהמסננים (כמו נטפרי בצד הלקוח) לעכב את המייל שעות עד שהתמונה נסרקת.
+  // במקום זה, קישור טקסט רגיל שנפתח רק בלחיצה יזומה של הלקוח.
   const imagesHtml = images.length
-    ? images.map(src => `<img src="${escapeHtml(absoluteUrl(src))}" style="max-width:100%;border-radius:8px;margin-top:8px;" />`).join('')
+    ? `<div style="margin-top:8px;">${images.map(src => `<a href="${escapeHtml(absoluteUrl(src))}" style="display:inline-block;font-size:13px;color:${item.bg_color ? fg : '#185fa5'};text-decoration:underline;">לצפייה בתמונה &#8599;</a>`).join('<br>')}</div>`
     : '';
   const linksHtml = links.length
     ? `<div style="margin-top:8px;">${links.map(l => `<a href="${escapeHtml(l)}" style="color:${item.bg_color ? fg : '#185fa5'};">${escapeHtml(l)}</a>`).join('<br>')}</div>`
@@ -68,7 +77,7 @@ function renderTopic(item, accent) {
 function renderQA(question, answer, accent) {
   const qBody = escapeHtml(question.body_edited ?? question.body_raw).replace(/\n/g, '<br>');
   const aBody = answer ? escapeHtml(answer.body_edited ?? answer.body_raw).replace(/\n/g, '<br>') : '';
-  const replyUrl = `mailto:reply+${question.id}@${INBOUND_DOMAIN}?subject=${encodeURIComponent('תגובה: ' + (question.subject || ''))}`;
+  const replyUrl = mailto('reply', question.id, 'תגובה: ' + (question.subject || ''));
 
   return `
   <tr><td style="padding:16px 0;border-bottom:1px solid #eceae3;">
@@ -84,20 +93,31 @@ function renderQA(question, answer, accent) {
   </td></tr>`;
 }
 
-// שורת כפתורים: שליחת שאלה + פרסום מודעה בשלוש הרמות. כל אחד מוצג/מוסתר
-// לפי הגדרות הרשימה (show_ask_button, show_ad_buttons).
+// כפתורי הצטרפות/הסרה בולטים בראש הגיליון - שניהם דרך מייל, לפי כתובת
+// השולח בפועל (from), בלי צורך בקישור אישי או טוקן.
+function renderTopButtons(list) {
+  const joinUrl = mailto('join', list.slug, 'הצטרפות');
+  const leaveUrl = mailto('leave', list.slug, 'הסרה');
+  return `
+  <tr><td style="padding:14px 24px;text-align:center;background:#faf9f6;">
+    <a href="${joinUrl}" style="display:inline-block;font-size:13px;color:#fff;background:#1D9E75;text-decoration:none;padding:8px 16px;border-radius:16px;margin:3px;font-weight:600;">הצטרפות לרשימה</a>
+    <a href="${leaveUrl}" style="display:inline-block;font-size:13px;color:#c04828;background:transparent;border:1px solid #c04828;text-decoration:none;padding:7px 16px;border-radius:16px;margin:3px;font-weight:600;">הסרה מהרשימה</a>
+  </td></tr>`;
+}
+
+// שורת כפתורים: שליחת שאלה + פרסום מודעה בשלוש הרמות - כל הכפתורים
+// פותחים mailto מוכן מראש, כדי שכל הפעולות יעבדו גם דרך תוכנת מייל בלבד.
 function renderActionButtons(list, accent) {
   const buttons = [];
 
   if (list.show_ask_button) {
-    const askUrl = `mailto:ask+${list.slug}@${INBOUND_DOMAIN}?subject=${encodeURIComponent('שאלה חדשה')}`;
-    buttons.push(`<a href="${askUrl}" style="${btnStyle(accent, true)}">לשליחת שאלה חדשה</a>`);
+    buttons.push(`<a href="${mailto('ask', list.slug, 'שאלה חדשה')}" style="${btnStyle(accent, true)}">לשליחת שאלה חדשה</a>`);
   }
 
   if (list.show_ad_buttons) {
-    buttons.push(`<a href="${BASE_URL}/ads/${list.slug}?tier=free" style="${btnStyle(accent, false)}">פרסום מודעת שורה (חינם)</a>`);
-    buttons.push(`<a href="${BASE_URL}/ads/${list.slug}?tier=plus" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
-    buttons.push(`<a href="${BASE_URL}/ads/${list.slug}?tier=premium" style="${btnStyle(accent, false)}">פרסום מודעה פרימיום</a>`);
+    buttons.push(`<a href="${mailto('ads', list.slug, 'מודעת שורה')}" style="${btnStyle(accent, false)}">פרסום מודעת שורה (חינם)</a>`);
+    buttons.push(`<a href="${mailto('adsplus', list.slug, 'מודעה מודגשת')}" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
+    buttons.push(`<a href="${mailto('adspremium', list.slug, 'מודעה פרימיום')}" style="${btnStyle(accent, false)}">פרסום מודעה פרימיום</a>`);
   }
 
   if (buttons.length === 0) return '';
@@ -143,6 +163,7 @@ function renderIssue({ list, qaPairs, ads, topics = [], unsubscribeToken }) {
         <div style="color:#ffffff;font-size:20px;font-weight:700;margin-top:2px;">${escapeHtml(list.name)}</div>
       </td>
     </tr>
+    ${renderTopButtons(list)}
     <tr><td style="padding:0 24px;">
       ${orderedSectionsHtml}
     </td></tr>
