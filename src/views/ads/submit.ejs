@@ -26,7 +26,12 @@
       <input type="text" name="subject" />
 
       <label>תוכן המודעה</label>
-      <textarea name="body" rows="5" required></textarea>
+      <div style="display:flex;gap:4px;margin-bottom:4px;">
+        <button type="button" onclick="wrapSelection('body','**')" style="border:1px solid #d3d1c7;background:#fff;border-radius:4px;width:28px;height:26px;cursor:pointer;"><b>ב</b></button>
+        <button type="button" onclick="wrapSelection('body','*')" style="border:1px solid #d3d1c7;background:#fff;border-radius:4px;width:28px;height:26px;cursor:pointer;"><i>נ</i></button>
+        <button type="button" onclick="wrapSelection('body','__')" style="border:1px solid #d3d1c7;background:#fff;border-radius:4px;width:28px;height:26px;cursor:pointer;"><u>ק</u></button>
+      </div>
+      <textarea id="body" name="body" rows="5" required></textarea>
 
       <label>סוג מודעה</label>
       <select name="paid_tier" id="tierSelect" onchange="document.getElementById('freeHint').style.display = (this.value === 'free') ? 'block' : 'none'; document.getElementById('styleFields').style.display = (this.value !== 'free') ? 'block' : 'none';">
@@ -51,5 +56,6 @@
     </form>
   <% } %>
 </div>
+<script src="/toolbar.js"></script>
 </body>
 </html>

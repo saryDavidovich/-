@@ -33,7 +33,12 @@
       </div>
       <form method="POST" action="/admin/items/<%= item.id %>/approve">
         <input type="text" name="subject" value="<%= item.subject || '' %>" placeholder="כותרת (אופציונלי)" />
-        <textarea name="body_edited" rows="4"><%= item.body_edited ?? item.body_raw %></textarea>
+        <div class="fmt-toolbar">
+          <button type="button" onclick="wrapSelection('body_edited_<%= item.id %>','**')"><b>ב</b></button>
+          <button type="button" onclick="wrapSelection('body_edited_<%= item.id %>','*')"><i>נ</i></button>
+          <button type="button" onclick="wrapSelection('body_edited_<%= item.id %>','__')"><u>ק</u></button>
+        </div>
+        <textarea id="body_edited_<%= item.id %>" name="body_edited" rows="4"><%= item.body_edited ?? item.body_raw %></textarea>
         <% if (item.type === 'ad') { %>
           <label style="font-size:12px;color:#888780;">רמת מודעה</label>
           <select name="paid_tier">
@@ -56,7 +61,12 @@
           <% item.pendingAnswers.forEach(ans => { %>
             <form method="POST" action="/admin/items/<%= ans.id %>/approve" style="margin-bottom:8px;">
               <div class="item-meta">מאת <%= ans.from_email %></div>
-              <textarea name="body_edited" rows="3"><%= ans.body_edited ?? ans.body_raw %></textarea>
+              <div class="fmt-toolbar">
+                <button type="button" onclick="wrapSelection('ans_body_<%= ans.id %>','**')"><b>ב</b></button>
+                <button type="button" onclick="wrapSelection('ans_body_<%= ans.id %>','*')"><i>נ</i></button>
+                <button type="button" onclick="wrapSelection('ans_body_<%= ans.id %>','__')"><u>ק</u></button>
+              </div>
+              <textarea id="ans_body_<%= ans.id %>" name="body_edited" rows="3"><%= ans.body_edited ?? ans.body_raw %></textarea>
               <input type="hidden" name="subject" value="" />
               <div class="actions">
                 <button class="btn" type="submit">אשר תשובה</button>
@@ -69,4 +79,5 @@
     <% } %>
   <% }) %>
 
+<script src="/toolbar.js"></script>
 <%- include('partials/footer') %>

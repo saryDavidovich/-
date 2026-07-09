@@ -87,6 +87,16 @@ async function compileAndSendIssue(list) {
   const archiveHtml = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: 'archive' });
   db.prepare(`UPDATE issues SET html = ? WHERE id = ?`).run(archiveHtml, issueId);
 
+  // Gmail וספקים אחרים חותכים מייל שעובר בערך 102KB ("[Message clipped]") -
+  // ואז חלקים ממנו (כולל תמונות) פשוט לא מוצגים. מזהירים בלוג כדי שתדע
+  // לצמצם תמונות/תוכן בגיליון הבא אם זה קורה.
+  const sizeKB = Math.round(Buffer.byteLength(archiveHtml, 'utf8') / 1024);
+  if (sizeKB > 90) {
+    console.warn(`אזהרה: הגיליון של "${list.name}" גדול (${sizeKB}KB) - קרוב לגבול שבו Gmail חותך הודעות (~100KB). שקול פחות תמונות/מודעות בגיליון אחד.`);
+  } else {
+    console.log(`גודל הגיליון של "${list.name}": ${sizeKB}KB`);
+  }
+
   let sentCount = 0;
   for (const sub of subscribers) {
     const html = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: sub.token });
@@ -121,4 +131,4 @@ async function runWeeklyCompiler() {
   }
 }
 
-module.exports = { runWeeklyCompiler, compileAndSendIssue };
+module.exports = { runWeeklyCompiler, compileAndSendIssue, sendViaSendGrid };

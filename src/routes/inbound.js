@@ -73,7 +73,7 @@ function extractLinks(body) {
   return [...body.matchAll(/https?:\/\/\S+/gi)].map(m => m[0]);
 }
 
-router.post('/inbound', upload.any(), (req, res) => {
+router.post('/inbound', upload.any(), async (req, res) => {
   try {
     const body = req.body || {};
     const fromAddresses = extractEmailAddresses(body.from || '');
@@ -95,9 +95,13 @@ router.post('/inbound', upload.any(), (req, res) => {
 
     const { action, extra } = parsed;
 
-    const attachedImages = (req.files || [])
-      .filter(f => /^image\//.test(f.mimetype))
-      .map(f => `/uploads/${f.filename}`);
+    const { compressUploadedImage } = require('../imageProcessing');
+    const imageFiles = (req.files || []).filter(f => /^image\//.test(f.mimetype));
+    const attachedImages = [];
+    for (const f of imageFiles) {
+      const finalPath = await compressUploadedImage(f.path);
+      attachedImages.push(`/uploads/${path.basename(finalPath)}`);
+    }
 
     if (action === 'ask' || action === 'ads' || action === 'adsplus' || action === 'adspremium' || action === 'topic') {
       const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(extra);

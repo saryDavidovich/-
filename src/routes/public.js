@@ -42,7 +42,7 @@ router.get('/ads/:slug', (req, res) => {
   });
 });
 
-router.post('/ads/:slug', upload.single('image'), (req, res) => {
+router.post('/ads/:slug', upload.single('image'), async (req, res) => {
   const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
   if (!list) return res.status(404).send('רשימה לא נמצאה');
 
@@ -60,7 +60,12 @@ router.post('/ads/:slug', upload.single('image'), (req, res) => {
     });
   }
 
-  const images = (PAID_FEATURES_ENABLED && tier !== 'free' && req.file) ? [`/uploads/${req.file.filename}`] : [];
+  let images = [];
+  if (PAID_FEATURES_ENABLED && tier !== 'free' && req.file) {
+    const { compressUploadedImage } = require('../imageProcessing');
+    const finalPath = await compressUploadedImage(req.file.path);
+    images = [`/uploads/${path.basename(finalPath)}`];
+  }
   const useStyle = PAID_FEATURES_ENABLED && tier !== 'free';
 
   db.prepare(`

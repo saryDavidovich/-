@@ -116,3 +116,11 @@ input, textarea, select {
 .tabbar { display: flex; gap: 6px; margin-bottom: 18px; border-bottom: 1px solid #e3e1d8; }
 .tabbar a { padding: 8px 14px; text-decoration: none; color: #5f5e5a; font-size: 14px; border-bottom: 2px solid transparent; }
 .tabbar a.active { color: #1D9E75; border-bottom-color: #1D9E75; font-weight: 600; }
+
+/* ---------- Text formatting toolbar ---------- */
+.fmt-toolbar { display: flex; gap: 4px; margin-bottom: 4px; }
+.fmt-toolbar button {
+  border: 1px solid #d3d1c7; background: #fff; border-radius: 4px;
+  width: 28px; height: 26px; cursor: pointer; font-size: 13px; color: #2c2c2a;
+}
+.fmt-toolbar button:hover { background: #f1efe8; }

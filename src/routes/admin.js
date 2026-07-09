@@ -204,14 +204,20 @@ router.get('/lists/:id/compose/ad', requireAuth, (req, res) => {
   res.render('admin/compose_ad', { list, allLists: getAllLists() });
 });
 
-router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), (req, res) => {
+router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), async (req, res) => {
   const list = loadListOr404(req, res);
   if (!list) return;
 
   const { subject, body, paid_tier, bg_color, text_color } = req.body;
   const wc = (body || '').trim().split(/\s+/).filter(Boolean).length;
-  const images = req.file ? [`/uploads/${req.file.filename}`] : [];
   const useStyle = paid_tier === 'plus' || paid_tier === 'premium';
+
+  let images = [];
+  if (req.file) {
+    const { compressUploadedImage } = require('../imageProcessing');
+    const finalPath = await compressUploadedImage(req.file.path);
+    images = [`/uploads/${path.basename(finalPath)}`];
+  }
 
   db.prepare(`
     INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, paid_tier, images_json, bg_color, text_color, approved_at)
@@ -306,7 +312,81 @@ router.get('/lists/:id/subscribers', requireAuth, (req, res) => {
   const subscribers = db.prepare(`
     SELECT * FROM subscribers WHERE list_id = ? AND unsubscribed = 0 ORDER BY created_at DESC
   `).all(list.id);
-  res.render('admin/subscribers', { list, subscribers, allLists: getAllLists() });
+  const flash = req.session.flash || null;
+  delete req.session.flash;
+  res.render('admin/subscribers', { list, subscribers, allLists: getAllLists(), flash });
+});
+
+router.post('/lists/:id/subscribers/add', requireAuth, express.urlencoded({ extended: true }), (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+  const email = (req.body.email || '').toLowerCase().trim();
+  if (email) {
+    const { v4: uuidv4 } = require('uuid');
+    try {
+      db.prepare(`INSERT INTO subscribers (list_id, email, confirmed, token) VALUES (?, ?, 1, ?)`)
+        .run(list.id, email, uuidv4());
+    } catch (e) {
+      // כבר קיים - אולי מבוטל, נוודא שהוא פעיל
+      db.prepare(`UPDATE subscribers SET unsubscribed = 0 WHERE list_id = ? AND email = ?`).run(list.id, email);
+    }
+  }
+  res.redirect(`/admin/lists/${list.id}/subscribers`);
+});
+
+router.post('/lists/:id/subscribers/:subId/remove', requireAuth, (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+  db.prepare(`UPDATE subscribers SET unsubscribed = 1 WHERE id = ? AND list_id = ?`).run(req.params.subId, list.id);
+  res.redirect(`/admin/lists/${list.id}/subscribers`);
+});
+
+// -------- העלאת קובץ אקסל/CSV עם הרבה מיילים בבת אחת --------
+router.post('/lists/:id/subscribers/bulk-upload', requireAuth, upload.single('file'), (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+
+  if (!req.file) {
+    req.session.flash = 'לא נבחר קובץ.';
+    return res.redirect(`/admin/lists/${list.id}/subscribers`);
+  }
+
+  const XLSX = require('xlsx');
+  const { v4: uuidv4 } = require('uuid');
+
+  try {
+    const workbook = XLSX.readFile(req.file.path);
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+    // מזהים כל תא שנראה כמו כתובת מייל, בכל עמודה ובכל שורה - כך שזה עובד
+    // גם אם יש כותרת עמודה, גם אם המייל לא בעמודה הראשונה, וגם עם קובץ CSV פשוט.
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emails = new Set();
+    rows.forEach(row => {
+      (row || []).forEach(cell => {
+        const val = String(cell || '').trim().toLowerCase();
+        if (emailPattern.test(val)) emails.add(val);
+      });
+    });
+
+    let added = 0;
+    const insert = db.prepare(`INSERT INTO subscribers (list_id, email, confirmed, token) VALUES (?, ?, 1, ?)`);
+    for (const email of emails) {
+      try {
+        insert.run(list.id, email, uuidv4());
+        added++;
+      } catch (e) { /* כבר קיים - מדלגים */ }
+    }
+
+    require('fs').unlinkSync(req.file.path);
+    req.session.flash = `הועלו ${added} כתובות מייל חדשות מתוך ${emails.size} שזוהו בקובץ.`;
+  } catch (err) {
+    console.error('שגיאה בקריאת קובץ מנויים:', err);
+    req.session.flash = 'שגיאה בקריאת הקובץ. ודא שזה קובץ Excel (.xlsx) או CSV תקין.';
+  }
+
+  res.redirect(`/admin/lists/${list.id}/subscribers`);
 });
 
 // -------- שליחה ידנית לבדיקה (בלי לחכות לתזמון השבועי) --------
@@ -338,7 +418,9 @@ router.get('/lists/:id/history', requireAuth, (req, res) => {
     SELECT * FROM issues WHERE list_id = ? AND status = 'sent' ORDER BY sent_at DESC
   `).all(list.id);
 
-  res.render('admin/history', { list, issues, allLists: getAllLists() });
+  const flash = req.session.flash || null;
+  delete req.session.flash;
+  res.render('admin/history', { list, issues, allLists: getAllLists(), flash });
 });
 
 router.get('/lists/:id/history/:issueId', requireAuth, (req, res) => {
@@ -347,6 +429,43 @@ router.get('/lists/:id/history/:issueId', requireAuth, (req, res) => {
   const issue = db.prepare('SELECT * FROM issues WHERE id = ? AND list_id = ?').get(req.params.issueId, list.id);
   if (!issue) return res.status(404).send('גיליון לא נמצא');
   res.send(issue.html);
+});
+
+router.post('/lists/:id/history/:issueId/resend', requireAuth, express.urlencoded({ extended: true }), async (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+  const issue = db.prepare('SELECT * FROM issues WHERE id = ? AND list_id = ?').get(req.params.issueId, list.id);
+  if (!issue) return res.status(404).send('גיליון לא נמצא');
+
+  // emails מגיע כמערך משדות בשם emails[] (אחד או יותר, כולל שדות ריקים
+  // שהמשתמש הוסיף עם כפתור ה-+ ולא מילא - מסננים אותם)
+  let emails = req.body.emails;
+  if (!emails) emails = [];
+  if (!Array.isArray(emails)) emails = [emails];
+  emails = emails.map(e => (e || '').trim().toLowerCase()).filter(Boolean);
+
+  if (emails.length === 0) {
+    req.session.flash = 'לא הוזנה אף כתובת מייל לשליחה חוזרת.';
+    return res.redirect(`/admin/lists/${list.id}/history`);
+  }
+
+  const { sendViaSendGrid } = require('../compiler');
+  let sentCount = 0;
+  const errors = [];
+  for (const email of emails) {
+    try {
+      await sendViaSendGrid(email, `${list.name} - שליחה חוזרת`, issue.html);
+      sentCount++;
+    } catch (err) {
+      errors.push(`${email}: ${err.message}`);
+    }
+  }
+
+  req.session.flash = errors.length
+    ? `נשלח ל-${sentCount} מתוך ${emails.length}. שגיאות: ${errors.join(' | ')}`
+    : `הגיליון נשלח מחדש בהצלחה ל-${sentCount} כתובות.`;
+
+  res.redirect(`/admin/lists/${list.id}/history`);
 });
 
 module.exports = router;

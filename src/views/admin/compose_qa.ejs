@@ -11,13 +11,24 @@
       <input type="text" name="subject" required />
 
       <label>גוף השאלה</label>
-      <textarea name="question_body" rows="3" required></textarea>
+      <div class="fmt-toolbar">
+        <button type="button" onclick="wrapSelection('question_body','**')"><b>ב</b></button>
+        <button type="button" onclick="wrapSelection('question_body','*')"><i>נ</i></button>
+        <button type="button" onclick="wrapSelection('question_body','__')"><u>ק</u></button>
+      </div>
+      <textarea id="question_body" name="question_body" rows="3" required></textarea>
 
       <label>תשובה (אופציונלי - אפשר להשאיר ריק ולהוסיף מאוחר יותר)</label>
-      <textarea name="answer_body" rows="4"></textarea>
+      <div class="fmt-toolbar">
+        <button type="button" onclick="wrapSelection('answer_body','**')"><b>ב</b></button>
+        <button type="button" onclick="wrapSelection('answer_body','*')"><i>נ</i></button>
+        <button type="button" onclick="wrapSelection('answer_body','__')"><u>ק</u></button>
+      </div>
+      <textarea id="answer_body" name="answer_body" rows="4"></textarea>
 
       <button class="btn" type="submit">הוסף לגיליון הבא</button>
     </form>
   </div>
 
+<script src="/toolbar.js"></script>
 <%- include('partials/footer') %>

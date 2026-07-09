@@ -12,10 +12,16 @@
       <input type="text" name="subject" />
 
       <label>תוכן הנושא</label>
-      <textarea name="body" rows="6" required></textarea>
+      <div class="fmt-toolbar">
+        <button type="button" onclick="wrapSelection('body','**')"><b>ב</b></button>
+        <button type="button" onclick="wrapSelection('body','*')"><i>נ</i></button>
+        <button type="button" onclick="wrapSelection('body','__')"><u>ק</u></button>
+      </div>
+      <textarea id="body" name="body" rows="6" required></textarea>
 
       <button class="btn" type="submit">הוסף לגיליון הבא</button>
     </form>
   </div>
 
+<script src="/toolbar.js"></script>
 <%- include('partials/footer') %>

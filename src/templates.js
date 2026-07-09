@@ -27,6 +27,20 @@ function escapeHtml(str = '') {
     .replace(/>/g, '&gt;');
 }
 
+// עיצוב טקסט בסיסי: **מודגש**, *נטוי*, __קו תחתון__ - מיושם אחרי ה-escape,
+// כך שאין שום סיכון של הזרקת HTML - התווים המיוחדים היחידים שמזוהים הם
+// אלה, שום תג HTML גולמי לא עובר.
+function applyBasicFormatting(escapedText) {
+  return escapedText
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/__(.+?)__/g, '<u>$1</u>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>');
+}
+
+function formatBody(raw) {
+  return applyBasicFormatting(escapeHtml(raw)).replace(/\n/g, '<br>');
+}
+
 function absoluteUrl(path) {
   if (/^https?:\/\//i.test(path)) return path;
   return `${BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
@@ -70,7 +84,7 @@ function wordLimitBadge(item) {
 function renderAd(item) {
   const images = JSON.parse(item.images_json || '[]');
   const links = JSON.parse(item.links_json || '[]');
-  const body = escapeHtml(item.body_edited ?? item.body_raw).replace(/\n/g, '<br>');
+  const body = formatBody(item.body_edited ?? item.body_raw);
 
   const bg = item.bg_color || 'transparent';
   const fg = item.text_color || '#2c2c2a';
@@ -106,7 +120,7 @@ function renderAd(item) {
 }
 
 function renderTopic(item, accent) {
-  const body = escapeHtml(item.body_edited ?? item.body_raw).replace(/\n/g, '<br>');
+  const body = formatBody(item.body_edited ?? item.body_raw);
   return `
   <tr><td style="padding:14px 0;border-bottom:1px solid #eceae3;">
     ${item.subject ? `<div style="font-size:15px;font-weight:700;color:${accent};margin-bottom:4px;">${escapeHtml(item.subject)}</div>` : ''}
@@ -115,8 +129,8 @@ function renderTopic(item, accent) {
 }
 
 function renderQA(question, answer, accent) {
-  const qBody = escapeHtml(question.body_edited ?? question.body_raw).replace(/\n/g, '<br>');
-  const aBody = answer ? escapeHtml(answer.body_edited ?? answer.body_raw).replace(/\n/g, '<br>') : '';
+  const qBody = formatBody(question.body_edited ?? question.body_raw);
+  const aBody = answer ? formatBody(answer.body_edited ?? answer.body_raw) : '';
   const replyUrl = mailto('reply', question.id, 'תגובה: ' + (question.subject || ''));
 
   return `
@@ -176,6 +190,22 @@ function btnStyle(accent, filled) {
     : `display:inline-block;font-size:13px;color:${accent};background:transparent;border:1px solid ${accent};text-decoration:none;padding:7px 14px;border-radius:16px;margin:3px;`;
 }
 
+function renderInstructions(list, hasQA) {
+  const lines = [];
+  if (hasQA) lines.push('להגיב לשאלה - לחצו על הכפתור "להגיב לשאלה הזו במייל" ליד השאלה הרלוונטית.');
+  if (list.show_ask_button) lines.push('לשאול שאלה חדשה - לחצו על הכפתור "לשליחת שאלה חדשה" למטה.');
+  if (list.show_ad_buttons) lines.push('לפרסם מודעה - לחצו על אחד מכפתורי הפרסום למטה, לפי הסוג הרצוי.');
+  lines.push('כל הכפתורים פותחים מייל מוכן מראש - רק כתבו את התוכן ולחצו שליחה.');
+
+  return `
+  <tr><td style="padding:10px 24px;background:#fbfaf6;border-bottom:1px solid #eceae3;">
+    <div style="font-size:12px;color:#7a7970;line-height:1.7;">
+      <strong>איך משתמשים בגיליון הזה:</strong><br>
+      ${lines.map(l => `&bull; ${l}`).join('<br>')}
+    </div>
+  </td></tr>`;
+}
+
 function renderIssue({ list, qaPairs, ads, topics = [], unsubscribeToken }) {
   const accent = list.accent_color || '#1D9E75';
   const qaHtml = qaPairs.map(({ question, answer }) => renderQA(question, answer, accent)).join('');
@@ -204,6 +234,7 @@ function renderIssue({ list, qaPairs, ads, topics = [], unsubscribeToken }) {
       </td>
     </tr>
     ${renderTopButtons(list)}
+    ${renderInstructions(list, qaPairs.length > 0)}
     <tr><td style="padding:0 24px;">
       ${orderedSectionsHtml}
     </td></tr>

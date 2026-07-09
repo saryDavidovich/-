@@ -25,11 +25,17 @@
       <input type="text" name="subject" />
 
       <label>תוכן</label>
-      <textarea name="body" rows="6" required></textarea>
+      <div style="display:flex;gap:4px;margin-bottom:4px;">
+        <button type="button" onclick="wrapSelection('body','**')" style="border:1px solid #d3d1c7;background:#fff;border-radius:4px;width:28px;height:26px;cursor:pointer;"><b>ב</b></button>
+        <button type="button" onclick="wrapSelection('body','*')" style="border:1px solid #d3d1c7;background:#fff;border-radius:4px;width:28px;height:26px;cursor:pointer;"><i>נ</i></button>
+        <button type="button" onclick="wrapSelection('body','__')" style="border:1px solid #d3d1c7;background:#fff;border-radius:4px;width:28px;height:26px;cursor:pointer;"><u>ק</u></button>
+      </div>
+      <textarea id="body" name="body" rows="6" required></textarea>
 
       <button class="btn" type="submit">שליחה</button>
     </form>
   <% } %>
 </div>
+<script src="/toolbar.js"></script>
 </body>
 </html>
