@@ -255,17 +255,17 @@ function renderActionButtons(list, accent) {
     const hintPlus = 'hint-adsplus-' + list.id;
     const hintPremium = 'hint-adspremium-' + list.id;
 
-    const freeBody = 'כתבו כאן את תוכן המודעה ולחצו שליחה - זו מודעת שורה פשוטה (בלי עיצוב), תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
-    const plusBody = 'כתבו כאן את תוכן המודעה ולחצו שליחה - זו מודעה מודגשת במסגרת צבעונית בולטת. את צבע הרקע אפשר לבחור בפאנל הניהול לפני האישור.';
-    const premiumBody = 'כתבו כאן את תוכן המודעה ולחצו שליחה - זו מודעה פרימיום עם מסגרת צבעונית ואפשרות לתמונה. את התמונה ואת צבע הרקע אפשר להוסיף בפאנל הניהול לפני האישור.';
+    const freeBody = 'כתבו כאן את תוכן המודעה ולחצו שליחה - זו מודעת שורה פשוטה (טקסט בלבד), תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
+    const plusBody = 'כתבו כאן את תוכן המודעה. רוצים לבחור צבע רקע? הוסיפו שורה בנוסח "צבע: כחול" (אפשר גם ורוד/ירוק/צהוב/אפור ועוד, או קוד כמו #A7D8F0). לחצו שליחה - המודעה תיכנס לתור אישור.';
+    const premiumBody = 'כתבו כאן את תוכן המודעה, אפשר לצרף תמונה או גיף כקובץ מצורף למייל הזה. רוצים לבחור צבע רקע? הוסיפו שורה בנוסח "צבע: כחול" (או קוד כמו #A7D8F0). לחצו שליחה - המודעה תיכנס לתור אישור.';
 
     buttons.push(`<a href="${mailto('ads', list.slug, 'מודעת שורה', freeBody)}" onclick="${showHintOnClick(hintFree)}" style="${btnStyle(accent, false)}">פרסום מודעת שורה (חינם)</a>`);
     buttons.push(`<a href="${mailto('adsplus', list.slug, 'מודעה מודגשת', plusBody)}" onclick="${showHintOnClick(hintPlus)}" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
     buttons.push(`<a href="${mailto('adspremium', list.slug, 'מודעה פרימיום', premiumBody)}" onclick="${showHintOnClick(hintPremium)}" style="${btnStyle(accent, false)}">פרסום מודעה פרימיום</a>`);
 
-    hints.push(clickHint(hintFree, accent, 'נפתחה הודעת מייל מוכנה - מודעת שורה פשוטה בלי עיצוב. כתבו את התוכן ולחצו שליחה.'));
-    hints.push(clickHint(hintPlus, accent, 'נפתחה הודעת מייל מוכנה - מודעה מודגשת במסגרת צבעונית. כתבו את התוכן ולחצו שליחה.'));
-    hints.push(clickHint(hintPremium, accent, 'נפתחה הודעת מייל מוכנה - מודעה פרימיום עם אפשרות לתמונה. כתבו את התוכן ולחצו שליחה.'));
+    hints.push(clickHint(hintFree, accent, 'נפתחה הודעת מייל מוכנה - מודעת שורה פשוטה, טקסט בלבד. כתבו את התוכן ולחצו שליחה.'));
+    hints.push(clickHint(hintPlus, accent, 'נפתחה הודעת מייל מוכנה - כתבו את התוכן, ואם תרצו גם צבע רקע כתבו שורה כמו "צבע: כחול".'));
+    hints.push(clickHint(hintPremium, accent, 'נפתחה הודעת מייל מוכנה - אפשר לצרף תמונה למייל ולבקש צבע רקע בשורה כמו "צבע: כחול".'));
   }
 
   if (buttons.length === 0) return '';

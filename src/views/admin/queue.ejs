@@ -32,6 +32,11 @@
         <%= { question: 'שאלה', ad: 'מודעה', article: 'נושא' }[item.type] || item.type %> · מאת <%= item.from_email %> · <%= item.word_count %> מילים
       </div>
       <% if (item.type === 'ad') { %>
+      <% if (item.bg_color) { %>
+        <div style="font-size:11px;color:#0f6e56;background:#eaf7f1;padding:6px 8px;border-radius:6px;margin-bottom:8px;">
+          זוהה בקשת צבע במייל מהלקוח - אפשר לשנות למטה לפני האישור.
+        </div>
+      <% } %>
       <form method="POST" action="/admin/items/<%= item.id %>/approve-ad" enctype="multipart/form-data">
         <input type="text" name="subject" value="<%= item.subject || '' %>" placeholder="כותרת (אופציונלי)" />
         <div class="fmt-toolbar">
