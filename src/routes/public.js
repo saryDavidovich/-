@@ -62,12 +62,12 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
 
   try {
     let images = [];
-    if (PAID_FEATURES_ENABLED && tier !== 'free' && req.file) {
+    if (PAID_FEATURES_ENABLED && tier === 'premium' && req.file) {
       const { compressUploadedImage } = require('../imageProcessing');
       const finalPath = await compressUploadedImage(req.file.path);
       images = [`/uploads/${path.basename(finalPath)}`];
     }
-    const useStyle = PAID_FEATURES_ENABLED && tier !== 'free';
+    const useStyle = PAID_FEATURES_ENABLED && (tier === 'plus' || tier === 'premium');
 
     db.prepare(`
       INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color)

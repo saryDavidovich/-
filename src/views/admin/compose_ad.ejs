@@ -5,8 +5,8 @@
   <div class="card">
     <p style="color:#888780;font-size:13px;margin-top:0;">
       כתיבה ישירה כאן מדלגת על תור האישור - המודעה נכנסת ישר כ"מאושרת".
-      תמונה/הנפשה (GIF) וצבעים מותאמים אישית זמינים רק למודעות מודגשות ופרימיום.
-      התמונה תוטמע ישירות בגיליון ותידחס אוטומטית לגודל סביר.
+      מודעה מודגשת: אפשר לבחור צבע רקע. מודעה פרימיום: גם צבע רקע וגם
+      תמונה/הנפשה (GIF) - תוטמע ישירות בגיליון ותידחס אוטומטית לגודל סביר.
     </p>
     <form method="POST" action="/admin/lists/<%= list.id %>/compose/ad" enctype="multipart/form-data">
       <label>כותרת (אופציונלי)</label>
@@ -21,21 +21,26 @@
       <textarea id="body" name="body" rows="4" required></textarea>
 
       <label>רמת מודעה</label>
-      <select name="paid_tier" id="tierSelect" onchange="document.getElementById('styleFields').style.display = (this.value !== 'free') ? 'block' : 'none';">
-        <option value="free">חינם (מודעת שורה)</option>
-        <option value="plus">מודגשת</option>
-        <option value="premium">פרימיום</option>
+      <select name="paid_tier" id="tierSelect" onchange="
+        document.getElementById('colorFields').style.display = (this.value === 'plus' || this.value === 'premium') ? 'block' : 'none';
+        document.getElementById('imageField').style.display = (this.value === 'premium') ? 'block' : 'none';
+      ">
+        <option value="free">חינם (מודעת שורה - בלי עיצוב)</option>
+        <option value="plus">מודגשת (מסגרת בצבע רקע לבחירה)</option>
+        <option value="premium">פרימיום (צבע רקע + תמונה/GIF)</option>
       </select>
 
-      <div id="styleFields" style="display:none;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:6px;">
-        <label>תמונה או הנפשה (GIF מונפש נתמך - אופציונלי)</label>
-        <input type="file" name="image" accept="image/*,.gif" />
-
+      <div id="colorFields" style="display:none;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:6px;">
         <label>צבע רקע</label>
         <input type="color" name="bg_color" value="#FFF6E5" style="height:36px;padding:2px;" />
 
         <label>צבע טקסט</label>
         <input type="color" name="text_color" value="#2C2C2A" style="height:36px;padding:2px;" />
+      </div>
+
+      <div id="imageField" style="display:none;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:6px;">
+        <label>תמונה או הנפשה (GIF מונפש נתמך - אופציונלי, זמין רק לפרימיום)</label>
+        <input type="file" name="image" accept="image/*,.gif" />
       </div>
 
       <button class="btn" type="submit" style="margin-top:12px;">הוסף לגיליון הבא</button>

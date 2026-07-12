@@ -31,6 +31,43 @@
       <div class="item-meta">
         <%= { question: 'שאלה', ad: 'מודעה', article: 'נושא' }[item.type] || item.type %> · מאת <%= item.from_email %> · <%= item.word_count %> מילים
       </div>
+      <% if (item.type === 'ad') { %>
+      <form method="POST" action="/admin/items/<%= item.id %>/approve-ad" enctype="multipart/form-data">
+        <input type="text" name="subject" value="<%= item.subject || '' %>" placeholder="כותרת (אופציונלי)" />
+        <div class="fmt-toolbar">
+          <button type="button" onclick="wrapSelection('body_edited_<%= item.id %>','**')"><b>ב</b></button>
+          <button type="button" onclick="wrapSelection('body_edited_<%= item.id %>','*')"><i>נ</i></button>
+          <button type="button" onclick="wrapSelection('body_edited_<%= item.id %>','__')"><u>ק</u></button>
+        </div>
+        <textarea id="body_edited_<%= item.id %>" name="body_edited" rows="4"><%= item.body_edited ?? item.body_raw %></textarea>
+
+        <label style="font-size:12px;color:#888780;">רמת מודעה</label>
+        <select name="paid_tier" onchange="
+          document.getElementById('colorFields-<%= item.id %>').style.display = (this.value === 'plus' || this.value === 'premium') ? 'block' : 'none';
+          document.getElementById('imageField-<%= item.id %>').style.display = (this.value === 'premium') ? 'block' : 'none';
+        ">
+          <option value="free" <%= item.paid_tier === 'free' ? 'selected' : '' %>>חינם (מודעת שורה - בלי עיצוב)</option>
+          <option value="plus" <%= item.paid_tier === 'plus' ? 'selected' : '' %>>מודגשת (צבע רקע לבחירה)</option>
+          <option value="premium" <%= item.paid_tier === 'premium' ? 'selected' : '' %>>פרימיום (צבע רקע + תמונה)</option>
+        </select>
+
+        <div id="colorFields-<%= item.id %>" style="display:<%= (item.paid_tier === 'plus' || item.paid_tier === 'premium') ? 'block' : 'none' %>;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:6px;">
+          <label>צבע רקע</label>
+          <input type="color" name="bg_color" value="<%= item.bg_color || '#FFF6E5' %>" style="height:36px;padding:2px;" />
+          <label>צבע טקסט</label>
+          <input type="color" name="text_color" value="<%= item.text_color || '#2C2C2A' %>" style="height:36px;padding:2px;" />
+        </div>
+
+        <div id="imageField-<%= item.id %>" style="display:<%= item.paid_tier === 'premium' ? 'block' : 'none' %>;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:6px;">
+          <label>תמונה או הנפשה (GIF - אופציונלי, זמין רק לפרימיום)</label>
+          <input type="file" name="image" accept="image/*,.gif" />
+        </div>
+
+        <div class="actions">
+          <button class="btn" type="submit">אשר</button>
+        </div>
+      </form>
+      <% } else { %>
       <form method="POST" action="/admin/items/<%= item.id %>/approve">
         <input type="text" name="subject" value="<%= item.subject || '' %>" placeholder="כותרת (אופציונלי)" />
         <div class="fmt-toolbar">
@@ -39,18 +76,11 @@
           <button type="button" onclick="wrapSelection('body_edited_<%= item.id %>','__')"><u>ק</u></button>
         </div>
         <textarea id="body_edited_<%= item.id %>" name="body_edited" rows="4"><%= item.body_edited ?? item.body_raw %></textarea>
-        <% if (item.type === 'ad') { %>
-          <label style="font-size:12px;color:#888780;">רמת מודעה</label>
-          <select name="paid_tier">
-            <option value="free" <%= item.paid_tier === 'free' ? 'selected' : '' %>>חינם</option>
-            <option value="plus" <%= item.paid_tier === 'plus' ? 'selected' : '' %>>מודגשת (עתידי - בתשלום)</option>
-            <option value="premium" <%= item.paid_tier === 'premium' ? 'selected' : '' %>>פרימיום (עתידי - בתשלום)</option>
-          </select>
-        <% } %>
         <div class="actions">
           <button class="btn" type="submit">אשר</button>
         </div>
       </form>
+      <% } %>
       <form method="POST" action="/admin/items/<%= item.id %>/reject" style="display:inline;">
         <button class="btn danger" type="submit">דחה</button>
       </form>

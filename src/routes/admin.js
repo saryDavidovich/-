@@ -139,6 +139,38 @@ router.post('/items/:id/approve', requireAuth, express.urlencoded({ extended: tr
   res.redirect(`/admin/lists/${item.list_id}/queue`);
 });
 
+// -------- אישור מודעה - טופס נפרד (multipart) כי רק למודעה יש צבע/תמונה.
+// שומרת תמונה שהגיעה כבר כקובץ מצורף במייל הנכנס (ראה inbound.js) אם לא
+// הועלתה תמונה חדשה כאן - רק אם הרמה עדיין פרימיום. אם הרמה שונתה
+// לחינם/מודגשת, התמונה (אם הייתה) מוסרת כי רק פרימיום תומכת בתמונה. --------
+router.post('/items/:id/approve-ad', requireAuth, upload.single('image'), async (req, res) => {
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).send('לא נמצא');
+
+  const editedBody = req.body.body_edited;
+  const editedSubject = req.body.subject;
+  const paidTier = req.body.paid_tier || item.paid_tier;
+  const useColor = paidTier === 'plus' || paidTier === 'premium';
+
+  let images = paidTier === 'premium' ? JSON.parse(item.images_json || '[]') : [];
+  if (req.file && paidTier === 'premium') {
+    const { compressUploadedImage } = require('../imageProcessing');
+    const finalPath = await compressUploadedImage(req.file.path);
+    images = [`/uploads/${path.basename(finalPath)}`];
+  }
+
+  db.prepare(`
+    UPDATE items SET status = 'approved', body_edited = ?, subject = ?, paid_tier = ?, images_json = ?, bg_color = ?, text_color = ?, approved_at = datetime('now'), manual_order = ?
+    WHERE id = ?
+  `).run(
+    editedBody, editedSubject, paidTier, JSON.stringify(images),
+    useColor ? (req.body.bg_color || null) : null, useColor ? (req.body.text_color || null) : null,
+    nextManualOrder(item.list_id), item.id
+  );
+
+  res.redirect(`/admin/lists/${item.list_id}/queue`);
+});
+
 router.post('/items/:id/reject', requireAuth, (req, res) => {
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).send('לא נמצא');
@@ -215,7 +247,7 @@ router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), async 
     const useStyle = paid_tier === 'plus' || paid_tier === 'premium';
 
     let images = [];
-    if (req.file) {
+    if (req.file && paid_tier === 'premium') {
       const { compressUploadedImage } = require('../imageProcessing');
       const finalPath = await compressUploadedImage(req.file.path);
       images = [`/uploads/${path.basename(finalPath)}`];

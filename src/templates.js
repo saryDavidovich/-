@@ -108,16 +108,27 @@ function wordLimitBadge(item) {
   return `<span style="font-size:11px;background:#f1efe8;color:#5f5e5a;padding:2px 8px;border-radius:10px;margin-inline-start:6px;">${tierLabel}</span>`;
 }
 
-function renderAd(item, useCid) {
+// מסגרת אחידה ומעוצבת בצבע הרשימה - כל תוכן בגיליון (שאלה+תשובה, נושא,
+// מודעה) יושב בתוך "כרטיס" עם גבול וגוון רקע עדין בצבע ההדגשה של הרשימה,
+// כך שהגיליון מרגיש כמו מוצר אחד מעוצב, לא רשימת טקסט עם קווי הפרדה.
+function cardWrapper(accent, innerHtml, { bg, border } = {}) {
+  const background = bg || `${accent}0d`;
+  const borderColor = border || `${accent}40`;
+  return `
+  <tr><td style="padding:8px 0;">
+    <div style="border:1px solid ${borderColor};border-radius:12px;background:${background};padding:16px 18px;">
+      ${innerHtml}
+    </div>
+  </td></tr>`;
+}
+
+function renderAd(item, useCid, accent) {
   const images = JSON.parse(item.images_json || '[]');
   const links = JSON.parse(item.links_json || '[]');
   const body = formatBody(item.body_edited ?? item.body_raw);
 
-  const bg = item.bg_color || 'transparent';
   const fg = item.text_color || '#2c2c2a';
-  const boxStyle = item.bg_color
-    ? `background:${bg};color:${fg};padding:14px;border-radius:8px;`
-    : `color:${fg};padding:14px 0;`;
+  const linkColor = item.bg_color ? fg : '#185fa5';
 
   // במייל בפועל (useCid=true): src="cid:..." - הקובץ מצורף להודעה עם
   // אותו מזהה, ראה compiler.js. בתצוגה בדפדפן (preview/history/archive):
@@ -130,22 +141,25 @@ function renderAd(item, useCid) {
     if (dataUri) {
       return `<img src="${dataUri}" alt="" style="max-width:100%;border-radius:8px;margin-bottom:8px;display:block;" />`;
     }
-    return `<a href="${escapeHtml(absoluteUrl(src))}" style="display:inline-block;font-size:13px;color:${item.bg_color ? fg : '#185fa5'};text-decoration:underline;margin-bottom:8px;">לצפייה בתמונה &#8599;</a>`;
+    return `<a href="${escapeHtml(absoluteUrl(src))}" style="display:inline-block;font-size:13px;color:${linkColor};text-decoration:underline;margin-bottom:8px;">לצפייה בתמונה &#8599;</a>`;
   }).join('');
 
   const linksHtml = links.length
-    ? `<div style="margin-top:8px;">${links.map(l => `<a href="${escapeHtml(l)}" style="color:${item.bg_color ? fg : '#185fa5'};">${escapeHtml(l)}</a>`).join('<br>')}</div>`
+    ? `<div style="margin-top:8px;">${links.map(l => `<a href="${escapeHtml(l)}" style="color:${linkColor};">${escapeHtml(l)}</a>`).join('<br>')}</div>`
     : '';
 
-  return `
-  <tr><td style="border-bottom:1px solid #eceae3;">
-    <div style="font-size:15px;line-height:1.6;${boxStyle}">
+  const inner = `
+    <div style="font-size:15px;line-height:1.6;color:${fg};">
       ${imagesHtml}
       ${item.subject ? `<strong>${escapeHtml(item.subject)}</strong>${wordLimitBadge(item)}<br>` : wordLimitBadge(item)}
       ${body}
       ${linksHtml}
-    </div>
-  </td></tr>`;
+    </div>`;
+
+  // מודעות עם צבע רקע מותאם אישית (מודגשת/פרימיום שהאדמין צבע): הצבע
+  // עצמו הופך למסגרת. אחרת (חינם, או מודגשת/פרימיום בלי צבע שנבחר) -
+  // המסגרת האחידה בצבע הרשימה, כמו כל שאר התוכן בגיליון.
+  return cardWrapper(accent, inner, item.bg_color ? { bg: item.bg_color, border: 'rgba(0,0,0,0.08)' } : {});
 }
 
 // אוספת את כל התמונות של המודעות בגיליון כדי לצרף אותן בפועל להודעה
@@ -177,11 +191,10 @@ function collectImageAttachments(ads) {
 
 function renderTopic(item, accent) {
   const body = formatBody(item.body_edited ?? item.body_raw);
-  return `
-  <tr><td style="padding:14px 0;border-bottom:1px solid #eceae3;">
+  const inner = `
     ${item.subject ? `<div style="font-size:15px;font-weight:700;color:${accent};margin-bottom:4px;">${escapeHtml(item.subject)}</div>` : ''}
-    <div style="font-size:15px;line-height:1.6;color:#2c2c2a;">${body}</div>
-  </td></tr>`;
+    <div style="font-size:15px;line-height:1.6;color:#2c2c2a;">${body}</div>`;
+  return cardWrapper(accent, inner);
 }
 
 function renderQA(question, answer, accent) {
@@ -191,8 +204,7 @@ function renderQA(question, answer, accent) {
   const replyUrl = mailto('reply', question.id, 'תגובה: ' + (question.subject || ''), replyBody);
   const hintId = `hint-reply-${question.id}`;
 
-  return `
-  <tr><td style="padding:16px 0;border-bottom:1px solid #eceae3;">
+  const inner = `
     <div style="font-size:14px;color:${accent};font-weight:600;margin-bottom:4px;">שאלה</div>
     <div style="font-size:15px;line-height:1.6;color:#2c2c2a;">${qBody}</div>
     ${answer ? `
@@ -202,8 +214,9 @@ function renderQA(question, answer, accent) {
     <div style="margin-top:10px;">
       <a href="${replyUrl}" onclick="${showHintOnClick(hintId)}" style="font-size:13px;color:${accent};text-decoration:none;border:1px solid ${accent};padding:4px 10px;border-radius:14px;">להגיב לשאלה הזו במייל &larr;</a>
       ${clickHint(hintId, accent, 'נפתחה עבורכם הודעת מייל מוכנה - כתבו את התגובה ולחצו שליחה.')}
-    </div>
-  </td></tr>`;
+    </div>`;
+
+  return cardWrapper(accent, inner);
 }
 
 // כפתורי הצטרפות/הסרה בולטים בראש הגיליון - שניהם דרך מייל, לפי כתובת
@@ -230,7 +243,6 @@ function renderActionButtons(list, accent) {
   const hints = [];
 
   const askBody = 'כתבו כאן את השאלה שלכם ולחצו שליחה - היא תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
-  const adBody = 'כתבו כאן את תוכן המודעה ולחצו שליחה - היא תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
 
   if (list.show_ask_button) {
     const hintId = 'hint-ask-' + list.id;
@@ -242,12 +254,18 @@ function renderActionButtons(list, accent) {
     const hintFree = 'hint-ads-' + list.id;
     const hintPlus = 'hint-adsplus-' + list.id;
     const hintPremium = 'hint-adspremium-' + list.id;
-    buttons.push(`<a href="${mailto('ads', list.slug, 'מודעת שורה', adBody)}" onclick="${showHintOnClick(hintFree)}" style="${btnStyle(accent, false)}">פרסום מודעת שורה (חינם)</a>`);
-    buttons.push(`<a href="${mailto('adsplus', list.slug, 'מודעה מודגשת', adBody)}" onclick="${showHintOnClick(hintPlus)}" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
-    buttons.push(`<a href="${mailto('adspremium', list.slug, 'מודעה פרימיום', adBody)}" onclick="${showHintOnClick(hintPremium)}" style="${btnStyle(accent, false)}">פרסום מודעה פרימיום</a>`);
-    hints.push(clickHint(hintFree, accent, 'נפתחה הודעת מייל מוכנה - כתבו את תוכן המודעה ולחצו שליחה.'));
-    hints.push(clickHint(hintPlus, accent, 'נפתחה הודעת מייל מוכנה - כתבו את תוכן המודעה ולחצו שליחה.'));
-    hints.push(clickHint(hintPremium, accent, 'נפתחה הודעת מייל מוכנה - כתבו את תוכן המודעה ולחצו שליחה.'));
+
+    const freeBody = 'כתבו כאן את תוכן המודעה ולחצו שליחה - זו מודעת שורה פשוטה (בלי עיצוב), תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
+    const plusBody = 'כתבו כאן את תוכן המודעה ולחצו שליחה - זו מודעה מודגשת במסגרת צבעונית בולטת. את צבע הרקע אפשר לבחור בפאנל הניהול לפני האישור.';
+    const premiumBody = 'כתבו כאן את תוכן המודעה ולחצו שליחה - זו מודעה פרימיום עם מסגרת צבעונית ואפשרות לתמונה. את התמונה ואת צבע הרקע אפשר להוסיף בפאנל הניהול לפני האישור.';
+
+    buttons.push(`<a href="${mailto('ads', list.slug, 'מודעת שורה', freeBody)}" onclick="${showHintOnClick(hintFree)}" style="${btnStyle(accent, false)}">פרסום מודעת שורה (חינם)</a>`);
+    buttons.push(`<a href="${mailto('adsplus', list.slug, 'מודעה מודגשת', plusBody)}" onclick="${showHintOnClick(hintPlus)}" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
+    buttons.push(`<a href="${mailto('adspremium', list.slug, 'מודעה פרימיום', premiumBody)}" onclick="${showHintOnClick(hintPremium)}" style="${btnStyle(accent, false)}">פרסום מודעה פרימיום</a>`);
+
+    hints.push(clickHint(hintFree, accent, 'נפתחה הודעת מייל מוכנה - מודעת שורה פשוטה בלי עיצוב. כתבו את התוכן ולחצו שליחה.'));
+    hints.push(clickHint(hintPlus, accent, 'נפתחה הודעת מייל מוכנה - מודעה מודגשת במסגרת צבעונית. כתבו את התוכן ולחצו שליחה.'));
+    hints.push(clickHint(hintPremium, accent, 'נפתחה הודעת מייל מוכנה - מודעה פרימיום עם אפשרות לתמונה. כתבו את התוכן ולחצו שליחה.'));
   }
 
   if (buttons.length === 0) return '';
@@ -276,7 +294,7 @@ function renderEntry(entry, accent, useCid) {
     return renderQA(entry.question, entry.answer, accent);
   }
   if (entry.kind === 'ad') {
-    return renderAd(entry.item, useCid);
+    return renderAd(entry.item, useCid, accent);
   }
   if (entry.kind === 'topic') {
     return renderTopic(entry.item, accent);
