@@ -1,5 +1,6 @@
 const db = require('./db');
 const { renderIssue, collectImageAttachments } = require('./templates');
+const { getOrderedApprovedEntries } = require('./issueBuilder');
 const fetch = require('node-fetch');
 
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
@@ -40,44 +41,13 @@ async function sendViaSendGrid(to, subject, html, attachments = []) {
 // לא נשלחו, מרכיב שאלה+תשובה יחד, ממיין מודעות לפי רמת תשלום (פרימיום קודם),
 // ושולח לכל מנוי פעיל ברשימה. הכל בלי מגע יד אדם מעבר לאישור שכבר ניתן.
 async function compileAndSendIssue(list) {
-  const newQuestions = db.prepare(`
-    SELECT * FROM items WHERE list_id = ? AND type = 'question' AND status = 'approved' ORDER BY approved_at ASC
-  `).all(list.id);
+  // סדר גמיש לחלוטין - כל הפריטים (שאלות, מודעות, נושאים, תגובות המשך)
+  // כבר ממוינים יחד באובייקט אחד לפי manual_order, שאפשר לשנות בגרירה
+  // בתצוגה המקדימה (ראה issueBuilder.js).
+  const entries = getOrderedApprovedEntries(list.id);
+  const ads = entries.filter(e => e.kind === 'ad').map(e => e.item);
 
-  const qaPairsNew = newQuestions.map(question => {
-    const answer = db.prepare(`
-      SELECT * FROM items WHERE parent_id = ? AND type = 'answer' AND status = 'approved' ORDER BY approved_at ASC LIMIT 1
-    `).get(question.id);
-    return { question, answer: answer || null };
-  });
-
-  // תשובות חדשות שהגיעו לשאלות שכבר נשלחו בעבר (למשל לקוח הגיב אחרי
-  // שהגיליון כבר יצא) - מכניסים אותן לגיליון הבא יחד עם השאלה המקורית,
-  // כדי שיהיה הקשר, בלי לשלוח את השאלה כאילו היא חדשה.
-  const followUpAnswers = db.prepare(`
-    SELECT a.* FROM items a
-    JOIN items q ON a.parent_id = q.id
-    WHERE a.list_id = ? AND a.type = 'answer' AND a.status = 'approved' AND q.status = 'sent'
-    ORDER BY a.approved_at ASC
-  `).all(list.id);
-
-  const qaPairsFollowUp = followUpAnswers.map(answer => {
-    const question = db.prepare('SELECT * FROM items WHERE id = ?').get(answer.parent_id);
-    return { question, answer };
-  });
-
-  const qaPairs = [...qaPairsNew, ...qaPairsFollowUp];
-
-  const tierOrder = { premium: 0, plus: 1, free: 2 };
-  const ads = db.prepare(`
-    SELECT * FROM items WHERE list_id = ? AND type = 'ad' AND status = 'approved' ORDER BY approved_at ASC
-  `).all(list.id).sort((a, b) => (tierOrder[a.paid_tier] ?? 9) - (tierOrder[b.paid_tier] ?? 9));
-
-  const topics = db.prepare(`
-    SELECT * FROM items WHERE list_id = ? AND type = 'article' AND status = 'approved' ORDER BY approved_at ASC
-  `).all(list.id);
-
-  if (qaPairs.length === 0 && ads.length === 0 && topics.length === 0) {
+  if (entries.length === 0) {
     console.log(`אין תוכן מאושר לרשימת "${list.name}" - מדלגים על שליחה השבוע.`);
     return null;
   }
@@ -91,7 +61,7 @@ async function compileAndSendIssue(list) {
 
   // שומרים עותק ארכיוני עם data URI (לא cid) - כי הארכיון נצפה בדפדפן,
   // לא בתוכנת מייל, ואין שם "מצורפים" בכלל.
-  const archiveHtml = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: 'archive', useCid: false });
+  const archiveHtml = renderIssue({ list, entries, unsubscribeToken: 'archive', useCid: false });
   db.prepare(`UPDATE issues SET html = ? WHERE id = ?`).run(archiveHtml, issueId);
 
   // Gmail וספקים אחרים חותכים מייל שעובר בערך 102KB ("[Message clipped]") -
@@ -110,17 +80,16 @@ async function compileAndSendIssue(list) {
 
   let sentCount = 0;
   for (const sub of subscribers) {
-    const html = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: sub.token, useCid: true });
+    const html = renderIssue({ list, entries, unsubscribeToken: sub.token, useCid: true });
     await sendViaSendGrid(sub.email, `${list.name} - עדכון שבועי`, html, attachments);
     sentCount++;
   }
 
-  const allItemIds = [
-    ...qaPairs.map(p => p.question.id),
-    ...qaPairs.filter(p => p.answer).map(p => p.answer.id),
-    ...ads.map(a => a.id),
-    ...topics.map(t => t.id)
-  ];
+  const allItemIds = entries.flatMap(e => {
+    if (e.kind === 'qa') return e.answer ? [e.question.id, e.answer.id] : [e.question.id];
+    if (e.kind === 'followup') return [e.answer.id];
+    return [e.item.id];
+  });
   const markSent = db.prepare(`UPDATE items SET status = 'sent', issue_id = ? WHERE id = ? AND status = 'approved'`);
   for (const id of allItemIds) markSent.run(issueId, id);
 
@@ -141,12 +110,18 @@ function rebuildIssueForResend(issue) {
   const questions = items.filter(i => i.type === 'question');
   const answersById = {};
   items.filter(i => i.type === 'answer').forEach(a => { answersById[a.parent_id] = a; });
-
-  const qaPairs = questions.map(q => ({ question: q, answer: answersById[q.id] || null }));
   const ads = items.filter(i => i.type === 'ad');
   const topics = items.filter(i => i.type === 'article');
 
-  const html = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: 'resend', useCid: true });
+  // משחזרים את אותו הסדר הגמיש ששויך לכל פריט בזמן השליחה המקורית
+  // (manual_order נשמר על כל שורה, לא רק ברגע השליחה).
+  const entries = [
+    ...questions.map(q => ({ kind: 'qa', order: q.manual_order ?? 0, question: q, answer: answersById[q.id] || null })),
+    ...ads.map(item => ({ kind: 'ad', order: item.manual_order ?? 0, item })),
+    ...topics.map(item => ({ kind: 'topic', order: item.manual_order ?? 0, item }))
+  ].sort((a, b) => a.order - b.order);
+
+  const html = renderIssue({ list, entries, unsubscribeToken: 'resend', useCid: true });
   const attachments = collectImageAttachments(ads);
   return { html, attachments };
 }

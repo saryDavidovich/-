@@ -79,8 +79,27 @@ function imageCid(itemId, index) {
   return `img-${itemId}-${index}`;
 }
 
-function mailto(action, slug, subjectText) {
-  return `mailto:${action}+${slug}@${INBOUND_DOMAIN}?subject=${encodeURIComponent(subjectText)}`;
+// גוף מייל מוכן-מראש לכל כפתור, כדי שגם מי שלא לוחץ על ריבוע ההסבר (למשל
+// כי תוכנת המייל שלו לא מריצה את ה-onclick למטה) עדיין יראה הסבר ברור
+// ברגע שהמייל נפתח לכתיבה, לפני ששולח.
+function mailto(action, slug, subjectText, bodyText = '') {
+  const params = new URLSearchParams({ subject: subjectText });
+  if (bodyText) params.set('body', bodyText);
+  return `mailto:${action}+${slug}@${INBOUND_DOMAIN}?${params.toString().replace(/\+/g, '%20')}`;
+}
+
+// ריבוע הסבר קטן בצבע הרשימה, שמופיע מתחת לכפתור מיד עם הלחיצה עליו (רק
+// בדפדפן - בתוכנת מייל שחוסמת JS, ה-onclick פשוט מתעלם ולא שובר כלום; שם
+// ההסבר עדיין קיים בגוף המייל שנפתח, ראה mailto() למעלה).
+function clickHint(hintId, accent, text) {
+  return `
+    <div id="${hintId}" style="display:none;margin-top:8px;font-size:12px;line-height:1.6;color:${accent};background:${accent}14;border:1px solid ${accent}55;border-radius:8px;padding:8px 12px;">
+      ${escapeHtml(text)}
+    </div>`;
+}
+
+function showHintOnClick(hintId) {
+  return `var h=document.getElementById('${hintId}');if(h)h.style.display='block';`;
 }
 
 function wordLimitBadge(item) {
@@ -168,7 +187,9 @@ function renderTopic(item, accent) {
 function renderQA(question, answer, accent) {
   const qBody = formatBody(question.body_edited ?? question.body_raw);
   const aBody = answer ? formatBody(answer.body_edited ?? answer.body_raw) : '';
-  const replyUrl = mailto('reply', question.id, 'תגובה: ' + (question.subject || ''));
+  const replyBody = 'כתבו כאן את התגובה שלכם ולחצו שליחה - היא תצורף לשאלה הזו בגיליון הבא, אחרי אישור.';
+  const replyUrl = mailto('reply', question.id, 'תגובה: ' + (question.subject || ''), replyBody);
+  const hintId = `hint-reply-${question.id}`;
 
   return `
   <tr><td style="padding:16px 0;border-bottom:1px solid #eceae3;">
@@ -179,7 +200,8 @@ function renderQA(question, answer, accent) {
     <div style="font-size:15px;line-height:1.6;color:#2c2c2a;">${aBody}</div>
     ` : ''}
     <div style="margin-top:10px;">
-      <a href="${replyUrl}" style="font-size:13px;color:${accent};text-decoration:none;border:1px solid ${accent};padding:4px 10px;border-radius:14px;">להגיב לשאלה הזו במייל &larr;</a>
+      <a href="${replyUrl}" onclick="${showHintOnClick(hintId)}" style="font-size:13px;color:${accent};text-decoration:none;border:1px solid ${accent};padding:4px 10px;border-radius:14px;">להגיב לשאלה הזו במייל &larr;</a>
+      ${clickHint(hintId, accent, 'נפתחה עבורכם הודעת מייל מוכנה - כתבו את התגובה ולחצו שליחה.')}
     </div>
   </td></tr>`;
 }
@@ -187,12 +209,17 @@ function renderQA(question, answer, accent) {
 // כפתורי הצטרפות/הסרה בולטים בראש הגיליון - שניהם דרך מייל, לפי כתובת
 // השולח בפועל (from), בלי צורך בקישור אישי או טוקן.
 function renderTopButtons(list) {
-  const joinUrl = mailto('join', list.slug, 'הצטרפות');
-  const leaveUrl = mailto('leave', list.slug, 'הסרה');
+  const accent = list.accent_color || '#1D9E75';
+  const joinUrl = mailto('join', list.slug, 'הצטרפות', 'לחיצה על "שליחה" מצרפת אתכם באופן אוטומטי לרשימה - אין צורך לכתוב שום דבר בגוף ההודעה.');
+  const leaveUrl = mailto('leave', list.slug, 'הסרה', 'לחיצה על "שליחה" מסירה אתכם באופן אוטומטי מהרשימה - אין צורך לכתוב שום דבר בגוף ההודעה.');
+  const joinHint = 'hint-join-' + list.id;
+  const leaveHint = 'hint-leave-' + list.id;
   return `
   <tr><td style="padding:14px 24px;text-align:center;background:#faf9f6;">
-    <a href="${joinUrl}" style="display:inline-block;font-size:13px;color:#fff;background:#1D9E75;text-decoration:none;padding:8px 16px;border-radius:16px;margin:3px;font-weight:600;">הצטרפות לרשימה</a>
-    <a href="${leaveUrl}" style="display:inline-block;font-size:13px;color:#c04828;background:transparent;border:1px solid #c04828;text-decoration:none;padding:7px 16px;border-radius:16px;margin:3px;font-weight:600;">הסרה מהרשימה</a>
+    <a href="${joinUrl}" onclick="${showHintOnClick(joinHint)}" style="display:inline-block;font-size:13px;color:#fff;background:#1D9E75;text-decoration:none;padding:8px 16px;border-radius:16px;margin:3px;font-weight:600;">הצטרפות לרשימה</a>
+    <a href="${leaveUrl}" onclick="${showHintOnClick(leaveHint)}" style="display:inline-block;font-size:13px;color:#c04828;background:transparent;border:1px solid #c04828;text-decoration:none;padding:7px 16px;border-radius:16px;margin:3px;font-weight:600;">הסרה מהרשימה</a>
+    ${clickHint(joinHint, accent, 'נפתחה הודעת מייל מוכנה - לחיצה על שליחה מצרפת אתכם אוטומטית, בלי לכתוב כלום.')}
+    ${clickHint(leaveHint, accent, 'נפתחה הודעת מייל מוכנה - לחיצה על שליחה מסירה אתכם אוטומטית, בלי לכתוב כלום.')}
   </td></tr>`;
 }
 
@@ -200,15 +227,27 @@ function renderTopButtons(list) {
 // פותחים mailto מוכן מראש, כדי שכל הפעולות יעבדו גם דרך תוכנת מייל בלבד.
 function renderActionButtons(list, accent) {
   const buttons = [];
+  const hints = [];
+
+  const askBody = 'כתבו כאן את השאלה שלכם ולחצו שליחה - היא תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
+  const adBody = 'כתבו כאן את תוכן המודעה ולחצו שליחה - היא תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
 
   if (list.show_ask_button) {
-    buttons.push(`<a href="${mailto('ask', list.slug, 'שאלה חדשה')}" style="${btnStyle(accent, true)}">לשליחת שאלה חדשה</a>`);
+    const hintId = 'hint-ask-' + list.id;
+    buttons.push(`<a href="${mailto('ask', list.slug, 'שאלה חדשה', askBody)}" onclick="${showHintOnClick(hintId)}" style="${btnStyle(accent, true)}">לשליחת שאלה חדשה</a>`);
+    hints.push(clickHint(hintId, accent, 'נפתחה הודעת מייל מוכנה - כתבו את השאלה שלכם ולחצו שליחה.'));
   }
 
   if (list.show_ad_buttons) {
-    buttons.push(`<a href="${mailto('ads', list.slug, 'מודעת שורה')}" style="${btnStyle(accent, false)}">פרסום מודעת שורה (חינם)</a>`);
-    buttons.push(`<a href="${mailto('adsplus', list.slug, 'מודעה מודגשת')}" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
-    buttons.push(`<a href="${mailto('adspremium', list.slug, 'מודעה פרימיום')}" style="${btnStyle(accent, false)}">פרסום מודעה פרימיום</a>`);
+    const hintFree = 'hint-ads-' + list.id;
+    const hintPlus = 'hint-adsplus-' + list.id;
+    const hintPremium = 'hint-adspremium-' + list.id;
+    buttons.push(`<a href="${mailto('ads', list.slug, 'מודעת שורה', adBody)}" onclick="${showHintOnClick(hintFree)}" style="${btnStyle(accent, false)}">פרסום מודעת שורה (חינם)</a>`);
+    buttons.push(`<a href="${mailto('adsplus', list.slug, 'מודעה מודגשת', adBody)}" onclick="${showHintOnClick(hintPlus)}" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
+    buttons.push(`<a href="${mailto('adspremium', list.slug, 'מודעה פרימיום', adBody)}" onclick="${showHintOnClick(hintPremium)}" style="${btnStyle(accent, false)}">פרסום מודעה פרימיום</a>`);
+    hints.push(clickHint(hintFree, accent, 'נפתחה הודעת מייל מוכנה - כתבו את תוכן המודעה ולחצו שליחה.'));
+    hints.push(clickHint(hintPlus, accent, 'נפתחה הודעת מייל מוכנה - כתבו את תוכן המודעה ולחצו שליחה.'));
+    hints.push(clickHint(hintPremium, accent, 'נפתחה הודעת מייל מוכנה - כתבו את תוכן המודעה ולחצו שליחה.'));
   }
 
   if (buttons.length === 0) return '';
@@ -218,6 +257,7 @@ function renderActionButtons(list, accent) {
     <div>
       ${buttons.join('')}
     </div>
+    ${hints.join('')}
   </td></tr>`;
 }
 
@@ -227,37 +267,27 @@ function btnStyle(accent, filled) {
     : `display:inline-block;font-size:13px;color:${accent};background:transparent;border:1px solid ${accent};text-decoration:none;padding:7px 14px;border-radius:16px;margin:3px;`;
 }
 
-function renderInstructions(list, hasQA) {
-  const lines = [];
-  if (hasQA) lines.push('להגיב לשאלה - לחצו על הכפתור "להגיב לשאלה הזו במייל" ליד השאלה הרלוונטית.');
-  if (list.show_ask_button) lines.push('לשאול שאלה חדשה - לחצו על הכפתור "לשליחת שאלה חדשה" למטה.');
-  if (list.show_ad_buttons) lines.push('לפרסם מודעה - לחצו על אחד מכפתורי הפרסום למטה, לפי הסוג הרצוי.');
-  lines.push('כל הכפתורים פותחים מייל מוכן מראש - רק כתבו את התוכן ולחצו שליחה.');
-
-  return `
-  <tr><td style="padding:10px 24px;background:#fbfaf6;border-bottom:1px solid #eceae3;">
-    <div style="font-size:12px;color:#7a7970;line-height:1.7;">
-      <strong>איך משתמשים בגיליון הזה:</strong><br>
-      ${lines.map(l => `&bull; ${l}`).join('<br>')}
-    </div>
-  </td></tr>`;
+// entries = מערך שטוח, כבר בסדר התצוגה הרצוי (ראה issueBuilder.js) - כל
+// איבר הוא שאלה+תשובה, תגובת המשך, מודעה, או נושא - בכל סדר אפשרי, כולל
+// מעורב. הוחלף ה-H2/section הישן (שאלות/נושאים/מודעות בקבוצות נפרדות)
+// בזרימה חופשית אחת, כדי לאפשר גרירה חופשית לגמרי בתצוגה המקדימה.
+function renderEntry(entry, accent, useCid) {
+  if (entry.kind === 'qa' || entry.kind === 'followup') {
+    return renderQA(entry.question, entry.answer, accent);
+  }
+  if (entry.kind === 'ad') {
+    return renderAd(entry.item, useCid);
+  }
+  if (entry.kind === 'topic') {
+    return renderTopic(entry.item, accent);
+  }
+  return '';
 }
 
-function renderIssue({ list, qaPairs, ads, topics = [], unsubscribeToken, useCid = false }) {
+function renderIssue({ list, entries = [], unsubscribeToken, useCid = false }) {
   const accent = list.accent_color || '#1D9E75';
-  const qaHtml = qaPairs.map(({ question, answer }) => renderQA(question, answer, accent)).join('');
-  const adsHtml = ads.map(item => renderAd(item, useCid)).join('');
-  const topicsHtml = topics.map(t => renderTopic(t, accent)).join('');
+  const bodyHtml = entries.map(entry => renderEntry(entry, accent, useCid)).join('');
   const unsubUrl = `${BASE_URL}/unsubscribe/${unsubscribeToken}`;
-
-  const sections = {
-    qa: qaPairs.length ? `<h2 style="font-size:16px;color:#2c2c2a;margin:22px 0 6px;">שאלות ותשובות השבוע</h2><table role="presentation" width="100%">${qaHtml}</table>` : '',
-    topics: topics.length ? `<h2 style="font-size:16px;color:#2c2c2a;margin:22px 0 6px;">נושאים השבוע</h2><table role="presentation" width="100%">${topicsHtml}</table>` : '',
-    ads: ads.length ? `<h2 style="font-size:16px;color:#2c2c2a;margin:22px 0 6px;">לוח מודעות</h2><table role="presentation" width="100%">${adsHtml}</table>` : ''
-  };
-
-  const order = (list.section_order || 'qa,topics,ads').split(',').map(s => s.trim());
-  const orderedSectionsHtml = order.map(key => sections[key] || '').join('');
 
   return `<!DOCTYPE html>
 <html dir="rtl" lang="he">
@@ -271,9 +301,8 @@ function renderIssue({ list, qaPairs, ads, topics = [], unsubscribeToken, useCid
       </td>
     </tr>
     ${renderTopButtons(list)}
-    ${renderInstructions(list, qaPairs.length > 0)}
     <tr><td style="padding:0 24px;">
-      ${orderedSectionsHtml}
+      <table role="presentation" width="100%">${bodyHtml}</table>
     </td></tr>
     ${renderActionButtons(list, accent)}
     <tr>

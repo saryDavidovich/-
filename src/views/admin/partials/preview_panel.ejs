@@ -1,0 +1,36 @@
+<%
+  const barColor = size.nearGmailLimit ? '#c04828' : list.accent_color;
+  const barPct = Math.min(100, size.percentOfGmailLimit);
+%>
+<div class="pp-size" style="border-color:<%= barColor %>55;">
+  <div class="pp-size-row">
+    <span>גודל הגיליון הבא: <strong><%= size.totalKB %>KB</strong></span>
+    <span class="pp-size-limit">מתוך ~<%= size.gmailLimitKB %>KB (גבול חיתוך Gmail)</span>
+  </div>
+  <div class="pp-size-bar-track">
+    <div class="pp-size-bar-fill" style="width:<%= barPct %>%;background:<%= barColor %>;"></div>
+  </div>
+  <% if (size.nearGmailLimit) { %>
+    <div class="pp-size-warning">קרוב לגבול - Gmail עלול לחתוך את ההודעה. שקול פחות תמונות/מודעות בגיליון הבא.</div>
+  <% } %>
+  <div class="pp-size-sub">HTML: <%= size.htmlKB %>KB · תמונות מצורפות: <%= size.imagesKB %>KB · <%= size.entriesCount %> פריטים</div>
+</div>
+
+<div class="pp-list" id="pp-list">
+  <% if (outlineItems.length === 0) { %>
+    <div class="pp-empty">אין עדיין פריטים מאושרים לגיליון הבא.</div>
+  <% } %>
+  <% outlineItems.forEach(item => { %>
+    <div class="pp-item" draggable="true" data-id="<%= item.id %>">
+      <span class="pp-drag-handle">⠿</span>
+      <span class="pp-item-icon"><%= item.icon %></span>
+      <span class="pp-item-body">
+        <span class="pp-item-kind" style="color:<%= list.accent_color %>;"><%= item.kindLabel %></span>
+        <span class="pp-item-title"><%= item.title %></span>
+      </span>
+    </div>
+  <% }) %>
+</div>
+<% if (outlineItems.length > 1) { %>
+  <div class="pp-hint">גררו פריט למקום אחר כדי לשנות את סדר הגיליון - כל שילוב אפשרי, כולל ערבוב שאלות ומודעות.</div>
+<% } %>

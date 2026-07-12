@@ -2,9 +2,6 @@
 
   <%- include('partials/tabbar', { list, page: 'settings' }) %>
 
-  <% const order = (list.section_order || 'qa,topics,ads').split(',').map(s => s.trim());
-     const posOf = key => order.indexOf(key) + 1; %>
-
   <div class="card" style="max-width:520px;">
     <form method="POST" action="/admin/lists/<%= list.id %>/settings">
 
@@ -19,32 +16,8 @@
 
       <div class="sidebar-divider" style="background:#e3e1d8;margin:16px 0;"></div>
 
-      <label>סדר הסקשנים בגיליון (1 = ראשון)</label>
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px;">
-        <div>
-          <label style="font-size:12px;">שו"ת</label>
-          <select name="order_qa">
-            <option value="1" <%= posOf('qa') === 1 ? 'selected' : '' %>>1</option>
-            <option value="2" <%= posOf('qa') === 2 ? 'selected' : '' %>>2</option>
-            <option value="3" <%= posOf('qa') === 3 ? 'selected' : '' %>>3</option>
-          </select>
-        </div>
-        <div>
-          <label style="font-size:12px;">נושאים</label>
-          <select name="order_topics">
-            <option value="1" <%= posOf('topics') === 1 ? 'selected' : '' %>>1</option>
-            <option value="2" <%= posOf('topics') === 2 ? 'selected' : '' %>>2</option>
-            <option value="3" <%= posOf('topics') === 3 ? 'selected' : '' %>>3</option>
-          </select>
-        </div>
-        <div>
-          <label style="font-size:12px;">מודעות</label>
-          <select name="order_ads">
-            <option value="1" <%= posOf('ads') === 1 ? 'selected' : '' %>>1</option>
-            <option value="2" <%= posOf('ads') === 2 ? 'selected' : '' %>>2</option>
-            <option value="3" <%= posOf('ads') === 3 ? 'selected' : '' %>>3</option>
-          </select>
-        </div>
+      <div class="pill" style="display:block;margin-bottom:12px;line-height:1.6;">
+        סדר הפריטים בגיליון (שאלות/מודעות/נושאים, בכל שילוב) נקבע כעת בגרירה חופשית בתצוגה המקדימה שבצד - לא כאן.
       </div>
 
       <div class="sidebar-divider" style="background:#e3e1d8;margin:16px 0;"></div>

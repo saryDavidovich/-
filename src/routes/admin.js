@@ -5,6 +5,7 @@ const fs = require('fs');
 const multer = require('multer');
 const db = require('../db');
 const { renderIssue } = require('../templates');
+const { getOrderedApprovedEntries, nextManualOrder, saveManualOrder, getIssueSizeInfo, describeEntry } = require('../issueBuilder');
 
 function requireAuth(req, res, next) {
   if (req.session && req.session.isAdmin) return next();
@@ -131,9 +132,9 @@ router.post('/items/:id/approve', requireAuth, express.urlencoded({ extended: tr
   const paidTier = req.body.paid_tier || item.paid_tier;
 
   db.prepare(`
-    UPDATE items SET status = 'approved', body_edited = ?, subject = ?, paid_tier = ?, approved_at = datetime('now')
+    UPDATE items SET status = 'approved', body_edited = ?, subject = ?, paid_tier = ?, approved_at = datetime('now'), manual_order = ?
     WHERE id = ?
-  `).run(editedBody, editedSubject, paidTier, item.id);
+  `).run(editedBody, editedSubject, paidTier, nextManualOrder(item.list_id), item.id);
 
   res.redirect(`/admin/lists/${item.list_id}/queue`);
 });
@@ -160,9 +161,9 @@ router.post('/lists/:id/compose/qa', requireAuth, express.urlencoded({ extended:
   const wc = (question_body || '').trim().split(/\s+/).filter(Boolean).length;
 
   const q = db.prepare(`
-    INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, approved_at)
-    VALUES (?, 'question', 'approved', 'admin', ?, ?, ?, ?, datetime('now'))
-  `).run(list.id, subject, question_body, question_body, wc);
+    INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, approved_at, manual_order)
+    VALUES (?, 'question', 'approved', 'admin', ?, ?, ?, ?, datetime('now'), ?)
+  `).run(list.id, subject, question_body, question_body, wc, nextManualOrder(list.id));
 
   if (answer_body && answer_body.trim()) {
     const awc = answer_body.trim().split(/\s+/).filter(Boolean).length;
@@ -190,9 +191,9 @@ router.post('/lists/:id/compose/topic', requireAuth, express.urlencoded({ extend
   const wc = (body || '').trim().split(/\s+/).filter(Boolean).length;
 
   db.prepare(`
-    INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, approved_at)
-    VALUES (?, 'article', 'approved', 'admin', ?, ?, ?, ?, datetime('now'))
-  `).run(list.id, subject || '', body, body, wc);
+    INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, approved_at, manual_order)
+    VALUES (?, 'article', 'approved', 'admin', ?, ?, ?, ?, datetime('now'), ?)
+  `).run(list.id, subject || '', body, body, wc, nextManualOrder(list.id));
 
   res.redirect(`/admin/lists/${list.id}/preview`);
 });
@@ -221,11 +222,11 @@ router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), async 
     }
 
     db.prepare(`
-      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, paid_tier, images_json, bg_color, text_color, approved_at)
-      VALUES (?, 'ad', 'approved', 'admin', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, paid_tier, images_json, bg_color, text_color, approved_at, manual_order)
+      VALUES (?, 'ad', 'approved', 'admin', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
     `).run(
       list.id, subject || '', body, body, wc, paid_tier || 'free', JSON.stringify(images),
-      useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null
+      useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null, nextManualOrder(list.id)
     );
 
     res.redirect(`/admin/lists/${list.id}/preview`);
@@ -240,42 +241,31 @@ router.get('/lists/:id/preview', requireAuth, (req, res) => {
   const list = loadListOr404(req, res);
   if (!list) return;
 
-  const newQuestions = db.prepare(`
-    SELECT * FROM items WHERE list_id = ? AND type = 'question' AND status = 'approved' ORDER BY approved_at ASC
-  `).all(list.id);
-
-  const qaPairsNew = newQuestions.map(question => {
-    const answer = db.prepare(`
-      SELECT * FROM items WHERE parent_id = ? AND type = 'answer' AND status = 'approved' ORDER BY approved_at ASC LIMIT 1
-    `).get(question.id);
-    return { question, answer: answer || null };
-  });
-
-  const followUpAnswers = db.prepare(`
-    SELECT a.* FROM items a
-    JOIN items q ON a.parent_id = q.id
-    WHERE a.list_id = ? AND a.type = 'answer' AND a.status = 'approved' AND q.status = 'sent'
-    ORDER BY a.approved_at ASC
-  `).all(list.id);
-
-  const qaPairsFollowUp = followUpAnswers.map(answer => {
-    const question = db.prepare('SELECT * FROM items WHERE id = ?').get(answer.parent_id);
-    return { question, answer };
-  });
-
-  const qaPairs = [...qaPairsNew, ...qaPairsFollowUp];
-
-  const tierOrder = { premium: 0, plus: 1, free: 2 };
-  const ads = db.prepare(`
-    SELECT * FROM items WHERE list_id = ? AND type = 'ad' AND status = 'approved' ORDER BY approved_at ASC
-  `).all(list.id).sort((a, b) => (tierOrder[a.paid_tier] ?? 9) - (tierOrder[b.paid_tier] ?? 9));
-
-  const topics = db.prepare(`
-    SELECT * FROM items WHERE list_id = ? AND type = 'article' AND status = 'approved' ORDER BY approved_at ASC
-  `).all(list.id);
-
-  const html = renderIssue({ list, qaPairs, ads, topics, unsubscribeToken: 'preview' });
+  const entries = getOrderedApprovedEntries(list.id);
+  const html = renderIssue({ list, entries, unsubscribeToken: 'preview' });
   res.send(html);
+});
+
+// -------- פאנל צד: רשימת פריטים לגרירה + מד גודל (נטען כ-fragment בתוך
+// התצוגה המקדימה החיה, לא עמוד בפני עצמו) --------
+router.get('/lists/:id/preview-panel', requireAuth, (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+
+  const entries = getOrderedApprovedEntries(list.id);
+  const outlineItems = entries.map(describeEntry);
+  const size = getIssueSizeInfo(list);
+  res.render('admin/partials/preview_panel', { list, outlineItems, size });
+});
+
+// -------- שמירת סדר חדש אחרי גרירה בתצוגה המקדימה --------
+router.post('/lists/:id/reorder', requireAuth, express.json(), (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+
+  const orderedIds = Array.isArray(req.body.order) ? req.body.order.map(Number).filter(Boolean) : [];
+  saveManualOrder(list.id, orderedIds);
+  res.json({ ok: true });
 });
 
 // -------- הגדרות רשימה --------
@@ -289,22 +279,14 @@ router.post('/lists/:id/settings', requireAuth, express.urlencoded({ extended: t
   const list = loadListOr404(req, res);
   if (!list) return;
 
-  const { name, description, accent_color, show_ad_buttons, show_ask_button, order_qa, order_topics, order_ads } = req.body;
-
-  // בונים את סדר הסקשנים לפי המספרים שנבחרו (1/2/3) בטופס
-  const sections = [
-    { key: 'qa', pos: parseInt(order_qa, 10) || 1 },
-    { key: 'topics', pos: parseInt(order_topics, 10) || 2 },
-    { key: 'ads', pos: parseInt(order_ads, 10) || 3 }
-  ].sort((a, b) => a.pos - b.pos);
-  const sectionOrder = sections.map(s => s.key).join(',');
+  const { name, description, accent_color, show_ad_buttons, show_ask_button } = req.body;
 
   db.prepare(`
-    UPDATE lists SET name = ?, description = ?, accent_color = ?, show_ad_buttons = ?, show_ask_button = ?, section_order = ?
+    UPDATE lists SET name = ?, description = ?, accent_color = ?, show_ad_buttons = ?, show_ask_button = ?
     WHERE id = ?
   `).run(
     name.trim(), description || '', accent_color || list.accent_color,
-    show_ad_buttons ? 1 : 0, show_ask_button ? 1 : 0, sectionOrder, list.id
+    show_ad_buttons ? 1 : 0, show_ask_button ? 1 : 0, list.id
   );
 
   res.redirect(`/admin/lists/${list.id}/settings`);

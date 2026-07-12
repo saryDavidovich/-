@@ -152,4 +152,66 @@ if (itemsNeedsMigration) {
   console.log('מיגרציית items הושלמה בהצלחה.');
 }
 
+// ג. עמודת manual_order - סדר תצוגה גמיש לחלוטין (כל פריט - שאלה, מודעה,
+// נושא - יכול לזוז לכל מקום בגיליון, לא רק בתוך "הקבוצה" שלו). כשעמודה
+// זו NULL עבור פריט שכבר אושר בעבר (מלפני העדכון), ממלאים אותה פעם אחת
+// לפי הסדר הישן (section_order + approved_at) כדי שהגיליון לא "יקפוץ"
+// ברגע השדרוג - מכאן והלאה כל אישור חדש מקבל מספר סידורי, וגרירה בתצוגה
+// המקדימה יכולה לשנות אותו בחופשיות.
+const itemCols = db.prepare("PRAGMA table_info(items)").all().map(c => c.name);
+if (!itemCols.includes('manual_order')) {
+  db.exec("ALTER TABLE items ADD COLUMN manual_order INTEGER");
+}
+
+const needsBackfill = db.prepare(`
+  SELECT COUNT(*) AS c FROM items
+  WHERE status = 'approved' AND manual_order IS NULL
+    AND (
+      type IN ('question', 'article', 'ad')
+      OR (type = 'answer' AND EXISTS (
+        SELECT 1 FROM items q WHERE q.id = items.parent_id AND q.status = 'sent'
+      ))
+    )
+`).get().c > 0;
+
+if (needsBackfill) {
+  console.log('ממלא manual_order עבור פריטים מאושרים קיימים (לפי הסדר הישן, חד-פעמי)...');
+  const setOrder = db.prepare('UPDATE items SET manual_order = ? WHERE id = ?');
+  const lists = db.prepare('SELECT * FROM lists').all();
+  const backfillTx = db.transaction(() => {
+    for (const list of lists) {
+      let seq = 1;
+      const order = (list.section_order || 'qa,topics,ads').split(',').map(s => s.trim());
+      for (const key of order) {
+        if (key === 'qa') {
+          const qs = db.prepare(`
+            SELECT id FROM items WHERE list_id = ? AND type = 'question' AND status = 'approved' ORDER BY approved_at ASC
+          `).all(list.id);
+          for (const q of qs) setOrder.run(seq++, q.id);
+        } else if (key === 'topics') {
+          const ts = db.prepare(`
+            SELECT id FROM items WHERE list_id = ? AND type = 'article' AND status = 'approved' ORDER BY approved_at ASC
+          `).all(list.id);
+          for (const t of ts) setOrder.run(seq++, t.id);
+        } else if (key === 'ads') {
+          const tierOrder = { premium: 0, plus: 1, free: 2 };
+          const adsRows = db.prepare(`
+            SELECT id, paid_tier FROM items WHERE list_id = ? AND type = 'ad' AND status = 'approved' ORDER BY approved_at ASC
+          `).all(list.id).sort((a, b) => (tierOrder[a.paid_tier] ?? 9) - (tierOrder[b.paid_tier] ?? 9));
+          for (const a of adsRows) setOrder.run(seq++, a.id);
+        }
+      }
+      // תגובות המשך לשאלות שכבר נשלחו - היו תמיד בסוף, נשארות בסוף
+      const followUps = db.prepare(`
+        SELECT a.id FROM items a JOIN items q ON a.parent_id = q.id
+        WHERE a.list_id = ? AND a.type = 'answer' AND a.status = 'approved' AND q.status = 'sent'
+        ORDER BY a.approved_at ASC
+      `).all(list.id);
+      for (const a of followUps) setOrder.run(seq++, a.id);
+    }
+  });
+  backfillTx();
+  console.log('מילוי manual_order הושלם.');
+}
+
 module.exports = db;
