@@ -294,6 +294,7 @@ function renderActionButtons(list, accent) {
     const hintPlus = 'hint-adsplus-' + list.id;
     buttons.push(`<a href="${mailto('adsplus', list.slug, 'מודעה מודגשת', instrPlusAd(list))}" onclick="${showHintOnClick(hintPlus)}" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
     hints.push(clickHint(hintPlus, accent, 'נפתחה הודעת מייל מוכנה - כתבו את התוכן. רשימת הצבעים הזמינים כתובה בטיוטה עצמה.'));
+    buttons.push(renderExpandableTest(list, accent));
   }
   if (list.show_ads_premium) {
     const hintPremium = 'hint-adspremium-' + list.id;
@@ -314,6 +315,28 @@ function renderActionButtons(list, accent) {
     </div>
     ${hints.join('')}
   </td></tr>`;
+}
+
+// ניסיון: פאנל שנפתח בלחיצה בלי JavaScript בכלל (checkbox hack - CSS
+// טהור). נוסף כרגע רק לכפתור "מודעה מודגשת", בנוסף לכפתור הרגיל שכבר
+// עובד (לא במקומו) - כדי לבדוק אם זה בפועל נתמך אצל הלקוחות שלך לפני
+// שמחליטים אם להרחיב את זה לשאר הכפתורים.
+function renderExpandableTest(list, accent) {
+  const names = colorNamesList(list);
+  const swatchesText = names.length ? names.join(', ') : '(לא הוגדרו צבעים)';
+  const mailtoUrl = mailto('adsplus', list.slug, 'מודעה מודגשת', instrPlusAd(list));
+
+  return `
+    <label style="cursor:pointer;display:inline-block;margin:3px;vertical-align:top;">
+      <input type="checkbox" class="cbhack-toggle" style="display:none;" />
+      <span style="display:inline-block;font-size:13px;color:#fff;background:${accent};text-decoration:none;padding:8px 14px;border-radius:16px;">🧪 מודעה מודגשת - לחצו לפרטים (ניסיון)</span>
+      <label class="cbhack-box" style="display:none;text-align:right;margin-top:10px;max-width:280px;border:1px solid ${accent}55;background:${accent}12;border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.7;color:#2c2c2a;cursor:default;">
+        <strong>מודעה מודגשת</strong> - המודעה תפורסם בתוך מסגרת צבעונית בולטת בגיליון.<br><br>
+        צבעים שאפשר לבקש: ${escapeHtml(swatchesText)}
+        <br><br>
+        <a href="${mailtoUrl}" style="display:inline-block;margin-top:4px;font-size:13px;color:#fff;background:${accent};padding:8px 14px;border-radius:16px;text-decoration:none;">לפתיחת המייל ולכתיבת המודעה &rarr;</a>
+      </label>
+    </label>`;
 }
 
 function btnStyle(accent, filled) {
@@ -374,7 +397,16 @@ function renderIssue({ list, entries = [], unsubscribeToken, useCid = false }) {
 
   return `<!DOCTYPE html>
 <html dir="rtl" lang="he">
-<head><meta charset="utf-8"></head>
+<head>
+<meta charset="utf-8">
+<style>
+  /* ניסוי: פאנל שנפתח בלחיצה בלי שום JavaScript (checkbox hack) - ראה
+     renderExpandableBoxTest ב-templates.js. אם זה לא נתמך, ה-checkbox
+     פשוט לא יעשה כלום ויישאר מוסתר - שום דבר לא "נשבר". */
+  .cbhack-box { display: none; }
+  .cbhack-toggle:checked ~ .cbhack-box { display: block !important; }
+</style>
+</head>
 <body style="margin:0;padding:0;background:#f6f5f1;font-family:Arial,Helvetica,sans-serif;">
   <table role="presentation" width="100%" style="max-width:600px;margin:0 auto;background:#ffffff;">
     <tr>
