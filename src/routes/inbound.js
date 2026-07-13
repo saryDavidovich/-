@@ -202,13 +202,11 @@ router.post('/inbound', upload.any(), async (req, res) => {
         console.warn(`ניסיון הצטרפות לרשימה לא קיימת: slug="${extra}"`);
         return res.status(200).send('ignored: unknown list');
       }
-      try {
-        db.prepare(`INSERT INTO subscribers (list_id, email, confirmed, token) VALUES (?, ?, 1, ?)`)
-          .run(list.id, fromEmail, require('uuid').v4());
-        console.log(`הצטרפות חדשה במייל: ${fromEmail} לרשימת "${list.name}"`);
-      } catch (e) {
-        console.log(`${fromEmail} כבר רשום לרשימת "${list.name}" - לא נוצרה כפילות.`);
-      }
+      const { subscribeEmail } = require('../subscriberUtil');
+      const result = subscribeEmail(list.id, fromEmail);
+      console.log(result.reactivated
+        ? `${fromEmail} הצטרף מחדש לרשימת "${list.name}" (הוסר בעבר).`
+        : `הצטרפות במייל: ${fromEmail} לרשימת "${list.name}".`);
       return res.status(200).send('joined');
     }
 
@@ -224,18 +222,14 @@ router.post('/inbound', upload.any(), async (req, res) => {
     // הצטרפות לכל הרשימות הפעילות בבת אחת (כפתור "הצטרפות לכל הרשימות"
     // בתחתית כל גיליון) - לא צריך slug כי זה חל על כולן, ה-extra מתעלמים ממנו.
     if (action === 'joinall') {
+      const { subscribeEmail } = require('../subscriberUtil');
       const allLists = db.prepare('SELECT * FROM lists WHERE active = 1').all();
       let joinedCount = 0;
       for (const list of allLists) {
-        try {
-          db.prepare(`INSERT INTO subscribers (list_id, email, confirmed, token) VALUES (?, ?, 1, ?)`)
-            .run(list.id, fromEmail, require('uuid').v4());
-          joinedCount++;
-        } catch (e) {
-          // כבר רשום לרשימה הזו - מתעלמים בשקט, ממשיכים לרשימה הבאה.
-        }
+        const result = subscribeEmail(list.id, fromEmail);
+        if (result.ok) joinedCount++;
       }
-      console.log(`הצטרפות לכל הרשימות: ${fromEmail} נוסף ל-${joinedCount} רשימות חדשות (מתוך ${allLists.length}).`);
+      console.log(`הצטרפות לכל הרשימות: ${fromEmail} נוסף/הופעל מחדש ב-${joinedCount} רשימות (מתוך ${allLists.length}).`);
       return res.status(200).send('joined all');
     }
 

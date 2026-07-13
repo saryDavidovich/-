@@ -377,14 +377,8 @@ router.post('/lists/:id/subscribers/add', requireAuth, express.urlencoded({ exte
   if (!list) return;
   const email = (req.body.email || '').toLowerCase().trim();
   if (email) {
-    const { v4: uuidv4 } = require('uuid');
-    try {
-      db.prepare(`INSERT INTO subscribers (list_id, email, confirmed, token) VALUES (?, ?, 1, ?)`)
-        .run(list.id, email, uuidv4());
-    } catch (e) {
-      // כבר קיים - אולי מבוטל, נוודא שהוא פעיל
-      db.prepare(`UPDATE subscribers SET unsubscribed = 0 WHERE list_id = ? AND email = ?`).run(list.id, email);
-    }
+    const { subscribeEmail } = require('../subscriberUtil');
+    subscribeEmail(list.id, email);
   }
   res.redirect(`/admin/lists/${list.id}/subscribers`);
 });
@@ -407,7 +401,6 @@ router.post('/lists/:id/subscribers/bulk-upload', requireAuth, upload.single('fi
   }
 
   const XLSX = require('xlsx');
-  const { v4: uuidv4 } = require('uuid');
 
   try {
     const workbook = XLSX.readFile(req.file.path);
@@ -426,12 +419,10 @@ router.post('/lists/:id/subscribers/bulk-upload', requireAuth, upload.single('fi
     });
 
     let added = 0;
-    const insert = db.prepare(`INSERT INTO subscribers (list_id, email, confirmed, token) VALUES (?, ?, 1, ?)`);
+    const { subscribeEmail } = require('../subscriberUtil');
     for (const email of emails) {
-      try {
-        insert.run(list.id, email, uuidv4());
-        added++;
-      } catch (e) { /* כבר קיים - מדלגים */ }
+      const result = subscribeEmail(list.id, email);
+      if (result.ok) added++;
     }
 
     require('fs').unlinkSync(req.file.path);
