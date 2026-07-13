@@ -107,6 +107,34 @@ if (!listCols.includes('show_ad_buttons')) db.exec("ALTER TABLE lists ADD COLUMN
 if (!listCols.includes('show_ask_button')) db.exec("ALTER TABLE lists ADD COLUMN show_ask_button INTEGER DEFAULT 1");
 if (!listCols.includes('section_order')) db.exec("ALTER TABLE lists ADD COLUMN section_order TEXT DEFAULT 'qa,topics,ads'");
 
+// שליחה אוטומטית שבועית - יום ושעה לפי שעון ישראל (כולל קיץ/חורף אוטומטית,
+// ראה timeUtil.js + server.js). ברירת המחדל (יום 4 = חמישי, 09:00) זהה
+// למה שהיה קבוע בקוד קודם, כדי שלא ישתנה כלום עד שמישהו משנה בהגדרות.
+if (!listCols.includes('send_day')) db.exec("ALTER TABLE lists ADD COLUMN send_day INTEGER DEFAULT 4");
+if (!listCols.includes('send_hour')) db.exec("ALTER TABLE lists ADD COLUMN send_hour INTEGER DEFAULT 9");
+if (!listCols.includes('send_minute')) db.exec("ALTER TABLE lists ADD COLUMN send_minute INTEGER DEFAULT 0");
+// תאריך (לפי שעון ישראל, כמו '2026-07-13') של השליחה האוטומטית האחרונה -
+// מונע שליחה כפולה אם השרת בודק כמה פעמים באותה דקה/יום.
+if (!listCols.includes('last_auto_send_date')) db.exec("ALTER TABLE lists ADD COLUMN last_auto_send_date TEXT");
+
+// פלטת הצבעים שהלקוח יכול לבקש במייל (ראה inbound.js) - כל רשימה יכולה
+// להגדיר אילו שמות צבע קיימים ולאיזה גוון מדויק כל שם מתאים.
+const DEFAULT_COLOR_PALETTE = JSON.stringify([
+  { name: 'לבן', hex: '#FFFFFF' }, { name: 'שחור', hex: '#111111' },
+  { name: 'אדום', hex: '#E4572E' }, { name: 'ורוד', hex: '#F7B2C4' },
+  { name: 'כתום', hex: '#F2994A' }, { name: 'צהוב', hex: '#F6D860' },
+  { name: 'ירוק', hex: '#8FD19E' }, { name: 'תכלת', hex: '#A7D8F0' },
+  { name: 'כחול', hex: '#5B8DEF' }, { name: 'סגול', hex: '#B48EF0' },
+  { name: 'חום', hex: '#B08968' }, { name: 'אפור', hex: '#C9C9C9' },
+  { name: 'קרם', hex: '#FFF6E5' }, { name: 'בז\'', hex: '#F3E5D0' }
+]);
+if (!listCols.includes('ad_color_palette_json')) {
+  const escaped = DEFAULT_COLOR_PALETTE.replace(/'/g, "''");
+  db.exec(`ALTER TABLE lists ADD COLUMN ad_color_palette_json TEXT DEFAULT '${escaped}'`);
+}
+db.prepare("UPDATE lists SET ad_color_palette_json = ? WHERE ad_color_palette_json IS NULL")
+  .run(DEFAULT_COLOR_PALETTE);
+
 // ב. טבלת items: אם היא נוצרה עם הסכמה הישנה (בלי 'article' ובלי צבעים),
 // צריך לבנות אותה מחדש כי SQLite לא מאפשר לשנות CHECK קיים. שומרים את כל
 // הנתונים הקיימים בתהליך.

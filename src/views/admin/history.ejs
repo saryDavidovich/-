@@ -13,7 +13,7 @@
   <% issues.forEach(issue => { %>
     <div class="card">
       <div class="list-row" style="border-bottom:none;">
-        <span>נשלח ב-<%= issue.sent_at %> · <%= issue.recipient_count %> נמענים</span>
+        <span>נשלח ב-<%= issue.sent_at_display %> (שעון ישראל) · <%= issue.recipient_count %> נמענים</span>
         <div style="display:flex;gap:8px;">
           <a class="btn secondary" href="/admin/lists/<%= list.id %>/history/<%= issue.id %>" target="_blank">צפייה בגיליון</a>
           <button class="btn secondary" type="button" onclick="document.getElementById('resend-<%= issue.id %>').style.display = document.getElementById('resend-<%= issue.id %>').style.display === 'none' ? 'block' : 'none';">שליחה נוספת</button>

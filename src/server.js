@@ -17,7 +17,7 @@ process.on('unhandledRejection', (err) => {
 const adminRoutes = require('./routes/admin');
 const inboundRoutes = require('./routes/inbound');
 const publicRoutes = require('./routes/public');
-const { runWeeklyCompiler } = require('./compiler');
+const { checkAndRunDueSends } = require('./compiler');
 
 const app = express();
 
@@ -43,13 +43,12 @@ app.use('/admin', adminRoutes);
 app.use('/webhooks', inboundRoutes);
 app.use('/', publicRoutes);
 
-// שליחה אוטומטית שבועית - ברירת מחדל: כל יום חמישי ב-09:00.
-// אפשר לשנות את התזמון דרך משתנה סביבה CRON_SCHEDULE (תחביר cron רגיל).
-const schedule = process.env.CRON_SCHEDULE || '0 9 * * 4';
-cron.schedule(schedule, () => {
-  console.log('מריץ קומפילציה ושליחה שבועית אוטומטית...');
-  runWeeklyCompiler();
-});
+// שליחה אוטומטית - כל רשימה קובעת לעצמה יום+שעה משלה (בהגדרות הרשימה),
+// לפי שעון ישראל (כולל קיץ/חורף אוטומטית, ראה timeUtil.js). בודקים כל
+// דקה איזו רשימה "הגיע התור שלה" ברגע הזה - במקום cron קבוע אחד לכולם.
+cron.schedule('* * * * *', () => {
+  checkAndRunDueSends().catch(err => console.error('שגיאה בבדיקת שליחות אוטומטיות:', err));
+}, { timezone: 'Asia/Jerusalem' });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

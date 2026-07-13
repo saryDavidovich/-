@@ -256,8 +256,8 @@ function renderActionButtons(list, accent) {
     const hintPremium = 'hint-adspremium-' + list.id;
 
     const freeBody = 'כתבו כאן את תוכן המודעה ולחצו שליחה - זו מודעת שורה פשוטה (טקסט בלבד), תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
-    const plusBody = 'כתבו כאן את תוכן המודעה. רוצים לבחור צבע רקע? הוסיפו שורה בנוסח "צבע: כחול" (אפשר גם ורוד/ירוק/צהוב/אפור ועוד, או קוד כמו #A7D8F0). לחצו שליחה - המודעה תיכנס לתור אישור.';
-    const premiumBody = 'כתבו כאן את תוכן המודעה, אפשר לצרף תמונה או גיף כקובץ מצורף למייל הזה. רוצים לבחור צבע רקע? הוסיפו שורה בנוסח "צבע: כחול" (או קוד כמו #A7D8F0). לחצו שליחה - המודעה תיכנס לתור אישור.';
+    const plusBody = 'כתבו כאן את תוכן המודעה. רוצים לבחור צבע רקע? הוסיפו שורה בנוסח "צבע: כחול" - רשימת הצבעים שאפשר לבקש מופיעה למטה בגיליון. לחצו שליחה - המודעה תיכנס לתור אישור.';
+    const premiumBody = 'כתבו כאן את תוכן המודעה, אפשר לצרף תמונה או גיף כקובץ מצורף למייל הזה. רוצים לבחור צבע רקע? הוסיפו שורה בנוסח "צבע: כחול" - רשימת הצבעים שאפשר לבקש מופיעה למטה בגיליון. לחצו שליחה - המודעה תיכנס לתור אישור.';
 
     buttons.push(`<a href="${mailto('ads', list.slug, 'מודעת שורה', freeBody)}" onclick="${showHintOnClick(hintFree)}" style="${btnStyle(accent, false)}">פרסום מודעת שורה (חינם)</a>`);
     buttons.push(`<a href="${mailto('adsplus', list.slug, 'מודעה מודגשת', plusBody)}" onclick="${showHintOnClick(hintPlus)}" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
@@ -283,6 +283,52 @@ function btnStyle(accent, filled) {
   return filled
     ? `display:inline-block;font-size:13px;color:#fff;background:${accent};text-decoration:none;padding:8px 14px;border-radius:16px;margin:3px;`
     : `display:inline-block;font-size:13px;color:${accent};background:transparent;border:1px solid ${accent};text-decoration:none;padding:7px 14px;border-radius:16px;margin:3px;`;
+}
+
+// מקרא צבעים - מוצג תמיד (לא רק בלחיצה), כדי שלקוח שכותב "צבע: X" במודעה
+// מודגשת/פרימיום ידע בדיוק לאיזה גוון הוא מתכוון, בלי לנחש. לא תלוי ב-JS
+// כי זה HTML/צבעים רגילים, מוצג בכל תוכנת מייל.
+function renderColorLegend(list, accent) {
+  if (!list.show_ad_buttons) return '';
+  let palette = [];
+  try { palette = JSON.parse(list.ad_color_palette_json || '[]'); } catch (e) { palette = []; }
+  if (palette.length === 0) return '';
+
+  const swatches = palette.map(c => `
+    <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#5f5e5a;margin:3px 8px 3px 0;">
+      <span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:${escapeHtml(c.hex)};border:1px solid rgba(0,0,0,0.15);vertical-align:middle;"></span>
+      ${escapeHtml(c.name)}
+    </span>`).join('');
+
+  return `
+  <tr><td style="padding:0 24px 14px;text-align:center;">
+    <div style="font-size:11px;color:${accent};font-weight:600;margin-bottom:6px;">צבעים שאפשר לבקש במודעה מודגשת/פרימיום (כתבו "צבע: השם" בגוף המייל)</div>
+    <div>${swatches}</div>
+  </td></tr>`;
+}
+
+// כפתורי הצטרפות לשאר הרשימות הפעילות + כפתור הצטרפות לכולן ביחד, בתחתית
+// הגיליון - כדי שמנוי לרשימה אחת יגלה בקלות שיש עוד רשימות ויוכל להצטרף
+// אליהן, הכל עדיין דרך מייל בלבד.
+function renderOtherListsPromo(list) {
+  const db = require('./db');
+  const otherLists = db.prepare('SELECT * FROM lists WHERE active = 1 AND id != ? ORDER BY name ASC').all(list.id);
+  if (otherLists.length === 0) return '';
+
+  const joinAllUrl = mailto('joinall', 'all', 'הצטרפות לכל הרשימות', 'לחיצה על "שליחה" מצרפת אתכם אוטומטית לכל הרשימות הפעילות - אין צורך לכתוב שום דבר בגוף ההודעה.');
+  const buttons = otherLists.map(l => {
+    const url = mailto('join', l.slug, 'הצטרפות', `לחיצה על "שליחה" מצרפת אתכם באופן אוטומטי לרשימת "${l.name}" - אין צורך לכתוב שום דבר בגוף ההודעה.`);
+    return `<a href="${url}" style="display:inline-block;font-size:12px;color:${l.accent_color || '#1D9E75'};background:transparent;border:1px solid ${l.accent_color || '#1D9E75'};text-decoration:none;padding:5px 12px;border-radius:14px;margin:3px;">${escapeHtml(l.name)}</a>`;
+  }).join('');
+
+  return `
+  <tr><td style="padding:16px 24px;background:#faf9f6;text-align:center;">
+    <div style="font-size:12px;color:#5f5e5a;margin-bottom:8px;">רשימות נוספות שאולי יעניינו אתכם:</div>
+    <div>${buttons}</div>
+    <div style="margin-top:10px;">
+      <a href="${joinAllUrl}" style="display:inline-block;font-size:12px;color:#fff;background:#2c2c2a;text-decoration:none;padding:6px 14px;border-radius:14px;">הצטרפות לכל הרשימות בבת אחת</a>
+    </div>
+  </td></tr>`;
 }
 
 // entries = מערך שטוח, כבר בסדר התצוגה הרצוי (ראה issueBuilder.js) - כל
@@ -323,13 +369,15 @@ function renderIssue({ list, entries = [], unsubscribeToken, useCid = false }) {
       <table role="presentation" width="100%">${bodyHtml}</table>
     </td></tr>
     ${renderActionButtons(list, accent)}
+    ${renderColorLegend(list, accent)}
+    ${renderOtherListsPromo(list)}
     <tr>
       <td style="padding:18px 24px;background:#f6f5f1;text-align:center;">
-        <div style="font-size:12px;color:#888780;">
-          קיבלת מייל זה כי אתה רשום לרשימת "${escapeHtml(list.name)}" של ${escapeHtml(BRAND_NAME)}.<br>
-          <a href="${unsubUrl}" style="color:#888780;">להסרה מרשימה זו</a> ·
-          <a href="${BASE_URL}/archive/${list.slug}" style="color:#888780;">גיליונות קודמים</a>
+        <div style="font-size:12px;color:#888780;margin-bottom:10px;">
+          קיבלת מייל זה כי אתה רשום לרשימת "${escapeHtml(list.name)}" של ${escapeHtml(BRAND_NAME)}.
         </div>
+        <a href="${BASE_URL}/archive/${list.slug}" style="display:inline-block;font-size:12px;color:${accent};background:transparent;border:1px solid ${accent};text-decoration:none;padding:6px 14px;border-radius:14px;margin:3px;">גיליונות קודמים</a>
+        <a href="${unsubUrl}" style="display:inline-block;font-size:12px;color:#c04828;background:transparent;border:1px solid #c04828;text-decoration:none;padding:6px 14px;border-radius:14px;margin:3px;">להסרה מרשימה זו</a>
       </td>
     </tr>
   </table>

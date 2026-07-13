@@ -31,8 +31,82 @@
         הצג כפתורי "פרסום מודעה" (חינם / מודגשת / פרימיום) בתוך הגיליון
       </label>
 
+      <div class="sidebar-divider" style="background:#e3e1d8;margin:16px 0;"></div>
+
+      <label>יום ושעה לשליחה אוטומטית שבועית</label>
+      <div style="font-size:11px;color:#888780;margin:-4px 0 8px;">
+        לפי שעון ישראל - קיץ/חורף מחושב אוטומטית, אין צורך לשנות כלום פעמיים בשנה.
+      </div>
+      <div style="display:flex;gap:8px;">
+        <select name="send_day" style="flex:1;">
+          <% ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'].forEach((dayLabel, i) => { %>
+            <option value="<%= i %>" <%= list.send_day === i ? 'selected' : '' %>>יום <%= dayLabel %></option>
+          <% }) %>
+        </select>
+        <select name="send_hour">
+          <% for (let h = 0; h < 24; h++) { %>
+            <option value="<%= h %>" <%= list.send_hour === h ? 'selected' : '' %>><%= String(h).padStart(2,'0') %></option>
+          <% } %>
+        </select>
+        <span style="align-self:center;">:</span>
+        <select name="send_minute">
+          <% [0,5,10,15,20,25,30,35,40,45,50,55].forEach(m => { %>
+            <option value="<%= m %>" <%= list.send_minute === m ? 'selected' : '' %>><%= String(m).padStart(2,'0') %></option>
+          <% }) %>
+        </select>
+      </div>
+
+      <div class="sidebar-divider" style="background:#e3e1d8;margin:16px 0;"></div>
+
+      <label>פלטת צבעים ללקוחות</label>
+      <div style="font-size:11px;color:#888780;margin:-4px 0 8px;">
+        לקוח שמפרסם מודעה מודגשת/פרימיום יכול לכתוב במייל שורה כמו "צבע: <%= palette[0] ? palette[0].name : 'כחול' %>" -
+        זה בדיוק הגוון שייבחר. שנו/הוסיפו/הסירו צבעים לפי הצורך.
+      </div>
+      <div id="colorRows">
+        <% palette.forEach(c => { %>
+          <div class="color-row" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+            <input type="text" name="color_name[]" value="<%= c.name %>" placeholder="שם הצבע" style="flex:1;margin:0;" />
+            <input type="color" name="color_hex[]" value="<%= c.hex %>" style="height:36px;width:56px;padding:2px;margin:0;" />
+            <button type="button" onclick="this.closest('.color-row').remove()" class="btn danger" style="padding:4px 10px;margin:0;">הסר</button>
+          </div>
+        <% }) %>
+      </div>
+      <button type="button" class="btn" style="margin-top:4px;" onclick="addColorRow()">+ הוסף צבע</button>
+
       <button class="btn" type="submit" style="margin-top:16px;">שמור הגדרות</button>
     </form>
   </div>
 
+<script>
+function addColorRow() {
+  const row = document.createElement('div');
+  row.className = 'color-row';
+  row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px;';
+
+  const nameInput = document.createElement('input');
+  nameInput.type = 'text';
+  nameInput.name = 'color_name[]';
+  nameInput.placeholder = 'שם הצבע';
+  nameInput.style.cssText = 'flex:1;margin:0;';
+
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.name = 'color_hex[]';
+  colorInput.value = '#FFFFFF';
+  colorInput.style.cssText = 'height:36px;width:56px;padding:2px;margin:0;';
+
+  const removeBtn = document.createElement('button');
+  removeBtn.type = 'button';
+  removeBtn.className = 'btn danger';
+  removeBtn.style.cssText = 'padding:4px 10px;margin:0;';
+  removeBtn.textContent = 'הסר';
+  removeBtn.onclick = () => row.remove();
+
+  row.appendChild(nameInput);
+  row.appendChild(colorInput);
+  row.appendChild(removeBtn);
+  document.getElementById('colorRows').appendChild(row);
+}
+</script>
 <%- include('partials/footer') %>

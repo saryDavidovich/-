@@ -120,7 +120,11 @@ router.get('/lists/:id/queue', requireAuth, (req, res) => {
   const items = [...questionItems, ...pendingTopics, ...pendingAds, ...orphanAnswers]
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
-  res.render('admin/queue', { list, items, allLists: getAllLists() });
+  res.render('admin/queue', {
+    list, items, allLists: getAllLists(),
+    testSendResult: req.query.test_sent ? 'הגיליון נשלח לבדיקה בהצלחה.' : null,
+    testSendError: req.query.test_error || null
+  });
 });
 
 router.post('/items/:id/approve', requireAuth, express.urlencoded({ extended: true }), (req, res) => {
@@ -268,6 +272,24 @@ router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), async 
   }
 });
 
+// -------- שליחת ניסיון לגיליון הבא - למייל אחד, בלי לגעת בהיסטוריה --------
+router.post('/lists/:id/test-send', requireAuth, express.urlencoded({ extended: true }), async (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+
+  const to = (req.body.to || '').trim();
+  if (!to) return res.redirect(`/admin/lists/${list.id}/queue?test_error=${encodeURIComponent('נא להזין כתובת מייל.')}`);
+
+  try {
+    const { sendTestIssue } = require('../compiler');
+    await sendTestIssue(list, to);
+    res.redirect(`/admin/lists/${list.id}/queue?test_sent=1`);
+  } catch (err) {
+    console.error('שגיאה בשליחת ניסיון:', err);
+    res.redirect(`/admin/lists/${list.id}/queue?test_error=${encodeURIComponent(err.message || 'שגיאה בשליחה.')}`);
+  }
+});
+
 // -------- תצוגה מקדימה חיה --------
 router.get('/lists/:id/preview', requireAuth, (req, res) => {
   const list = loadListOr404(req, res);
@@ -304,21 +326,34 @@ router.post('/lists/:id/reorder', requireAuth, express.json(), (req, res) => {
 router.get('/lists/:id/settings', requireAuth, (req, res) => {
   const list = loadListOr404(req, res);
   if (!list) return;
-  res.render('admin/settings', { list, allLists: getAllLists() });
+  let palette = [];
+  try { palette = JSON.parse(list.ad_color_palette_json || '[]'); } catch (e) { palette = []; }
+  res.render('admin/settings', { list, allLists: getAllLists(), palette });
 });
 
 router.post('/lists/:id/settings', requireAuth, express.urlencoded({ extended: true }), (req, res) => {
   const list = loadListOr404(req, res);
   if (!list) return;
 
-  const { name, description, accent_color, show_ad_buttons, show_ask_button } = req.body;
+  const { name, description, accent_color, show_ad_buttons, show_ask_button, send_day, send_hour, send_minute } = req.body;
+
+  // בונים את הפלטה מתוך שני מערכים מקבילים (color_name[] / color_hex[]) -
+  // מתעלמים משורות ריקות (שם ריק, למשל אם הוסיפו שורה ולא מילאו אותה).
+  const names = [].concat(req.body.color_name || []);
+  const hexes = [].concat(req.body.color_hex || []);
+  const palette = names
+    .map((name, i) => ({ name: (name || '').trim(), hex: hexes[i] || '#FFFFFF' }))
+    .filter(c => c.name);
 
   db.prepare(`
-    UPDATE lists SET name = ?, description = ?, accent_color = ?, show_ad_buttons = ?, show_ask_button = ?
+    UPDATE lists SET name = ?, description = ?, accent_color = ?, show_ad_buttons = ?, show_ask_button = ?,
+      send_day = ?, send_hour = ?, send_minute = ?, ad_color_palette_json = ?
     WHERE id = ?
   `).run(
     name.trim(), description || '', accent_color || list.accent_color,
-    show_ad_buttons ? 1 : 0, show_ask_button ? 1 : 0, list.id
+    show_ad_buttons ? 1 : 0, show_ask_button ? 1 : 0,
+    parseInt(send_day, 10) || 0, parseInt(send_hour, 10) || 0, parseInt(send_minute, 10) || 0,
+    JSON.stringify(palette), list.id
   );
 
   res.redirect(`/admin/lists/${list.id}/settings`);
@@ -328,9 +363,10 @@ router.post('/lists/:id/settings', requireAuth, express.urlencoded({ extended: t
 router.get('/lists/:id/subscribers', requireAuth, (req, res) => {
   const list = loadListOr404(req, res);
   if (!list) return;
+  const { formatIsraelDateTime } = require('../timeUtil');
   const subscribers = db.prepare(`
     SELECT * FROM subscribers WHERE list_id = ? AND unsubscribed = 0 ORDER BY created_at DESC
-  `).all(list.id);
+  `).all(list.id).map(sub => ({ ...sub, created_at_display: formatIsraelDateTime(sub.created_at) }));
   const flash = req.session.flash || null;
   delete req.session.flash;
   res.render('admin/subscribers', { list, subscribers, allLists: getAllLists(), flash });
@@ -433,9 +469,10 @@ router.get('/lists/:id/history', requireAuth, (req, res) => {
   const list = loadListOr404(req, res);
   if (!list) return;
 
+  const { formatIsraelDateTime } = require('../timeUtil');
   const issues = db.prepare(`
     SELECT * FROM issues WHERE list_id = ? AND status = 'sent' ORDER BY sent_at DESC
-  `).all(list.id);
+  `).all(list.id).map(issue => ({ ...issue, sent_at_display: formatIsraelDateTime(issue.sent_at) }));
 
   const flash = req.session.flash || null;
   delete req.session.flash;

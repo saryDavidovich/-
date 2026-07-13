@@ -24,7 +24,7 @@
 
   <% issues.forEach(issue => { %>
     <div class="issue-row">
-      <span>גיליון מתאריך <%= issue.sent_at %></span>
+      <span>גיליון מתאריך <%= issue.sent_at_display %></span>
       <a href="/archive/<%= list.slug %>/<%= issue.id %>" target="_blank">לצפייה &larr;</a>
     </div>
   <% }) %>

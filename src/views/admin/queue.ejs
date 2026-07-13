@@ -2,6 +2,20 @@
 
   <%- include('partials/tabbar', { list, page: 'queue' }) %>
 
+  <div class="card" style="margin-bottom:16px;background:#fbfaf6;">
+    <form method="POST" action="/admin/lists/<%= list.id %>/test-send" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0;">
+      <label style="margin:0;font-size:13px;">שליחת ניסיון של הגיליון הבא (לבדיקה בלבד - לא נכנס להיסטוריה ולא נשלח ללקוחות):</label>
+      <input type="email" name="to" placeholder="you@example.com" required style="max-width:240px;margin:0;" />
+      <button class="btn" type="submit" style="margin:0;">שלח ניסיון</button>
+    </form>
+    <% if (testSendResult) { %>
+      <div style="margin-top:8px;font-size:13px;color:#0f6e56;"><%= testSendResult %></div>
+    <% } %>
+    <% if (testSendError) { %>
+      <div style="margin-top:8px;font-size:13px;color:#c04828;"><%= testSendError %></div>
+    <% } %>
+  </div>
+
   <% if (items.length === 0) { %>
     <div class="card">אין פריטים ממתינים לאישור כרגע.</div>
   <% } %>

@@ -73,19 +73,11 @@ function extractLinks(body) {
   return [...body.matchAll(/https?:\/\/\S+/gi)].map(m => m[0]);
 }
 
-// פלטת צבעים בעברית - כך שלקוח שמפרסם מודעה מודגשת/פרימיום יכול לבקש צבע
-// רקע בלי שום ממשק, רק בכתיבת שורה במייל עצמו (ראה extractRequestedColor).
-const COLOR_NAMES = {
-  'לבן': '#FFFFFF', 'שחור': '#111111', 'אדום': '#E4572E', 'ורוד': '#F7B2C4',
-  'כתום': '#F2994A', 'צהוב': '#F6D860', 'ירוק': '#8FD19E', 'תכלת': '#A7D8F0',
-  'כחול': '#5B8DEF', 'סגול': '#B48EF0', 'חום': '#B08968', 'אפור': '#C9C9C9',
-  'קרם': '#FFF6E5', 'בז': '#F3E5D0'
-};
-
 // מחפשת שורה בנוסח "צבע: X" או "צבע רקע: X" בגוף המייל - X יכול להיות שם
-// צבע בעברית (מהפלטה למעלה) או קוד hex (#A7D8F0 / A7D8F0). מחזירה את
-// הצבע שנמצא ואת השורה המדויקת, כדי שאפשר יהיה להסיר אותה מהתוכן הגלוי.
-function extractRequestedColor(text) {
+// צבע מהפלטה שהוגדרה לרשימה הזו בהגדרות (ראה admin.js /settings), או קוד
+// hex ישיר (#A7D8F0 / A7D8F0) כגיבוי לא-מפורסם. מחזירה את הצבע שנמצא ואת
+// השורה המדויקת, כדי שאפשר יהיה להסיר אותה מהתוכן הגלוי.
+function extractRequestedColor(text, palette) {
   const match = String(text || '').match(/^[ \t]*צבע(?:[ \t]*רקע)?[ \t]*[:\-][ \t]*(.+)$/im);
   if (!match) return null;
 
@@ -94,8 +86,10 @@ function extractRequestedColor(text) {
   if (hexMatch) return { bg: '#' + hexMatch[1].toUpperCase(), matchedLine: match[0] };
 
   const cleaned = raw.replace(/[^\u05D0-\u05EA]/g, '');
-  for (const [name, hex] of Object.entries(COLOR_NAMES)) {
-    if (cleaned.includes(name)) return { bg: hex, matchedLine: match[0] };
+  for (const c of (palette || [])) {
+    if (c.name && cleaned.includes(c.name.replace(/[^\u05D0-\u05EA]/g, ''))) {
+      return { bg: c.hex, matchedLine: match[0] };
+    }
   }
   return null;
 }
@@ -161,7 +155,9 @@ router.post('/inbound', upload.any(), async (req, res) => {
       let bgColor = null;
       let textColor = null;
       if (type === 'ad' && (tier === 'plus' || tier === 'premium')) {
-        const colorRequest = extractRequestedColor(text);
+        let palette = [];
+        try { palette = JSON.parse(list.ad_color_palette_json || '[]'); } catch (e) { palette = []; }
+        const colorRequest = extractRequestedColor(text, palette);
         if (colorRequest) {
           bgColor = colorRequest.bg;
           textColor = pickReadableTextColor(colorRequest.bg);
@@ -223,6 +219,24 @@ router.post('/inbound', upload.any(), async (req, res) => {
         .run(list.id, fromEmail);
       console.log(`הסרה במייל: ${fromEmail} מרשימת "${list.name}" (${result.changes} שורות עודכנו)`);
       return res.status(200).send('left');
+    }
+
+    // הצטרפות לכל הרשימות הפעילות בבת אחת (כפתור "הצטרפות לכל הרשימות"
+    // בתחתית כל גיליון) - לא צריך slug כי זה חל על כולן, ה-extra מתעלמים ממנו.
+    if (action === 'joinall') {
+      const allLists = db.prepare('SELECT * FROM lists WHERE active = 1').all();
+      let joinedCount = 0;
+      for (const list of allLists) {
+        try {
+          db.prepare(`INSERT INTO subscribers (list_id, email, confirmed, token) VALUES (?, ?, 1, ?)`)
+            .run(list.id, fromEmail, require('uuid').v4());
+          joinedCount++;
+        } catch (e) {
+          // כבר רשום לרשימה הזו - מתעלמים בשקט, ממשיכים לרשימה הבאה.
+        }
+      }
+      console.log(`הצטרפות לכל הרשימות: ${fromEmail} נוסף ל-${joinedCount} רשימות חדשות (מתוך ${allLists.length}).`);
+      return res.status(200).send('joined all');
     }
 
     console.warn(`פעולה לא מוכרת: "${action}"`);

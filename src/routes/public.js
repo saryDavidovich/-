@@ -154,9 +154,10 @@ router.get('/archive/:slug', (req, res) => {
   const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
   if (!list) return res.status(404).send('רשימה לא נמצאה');
 
+  const { formatIsraelDateTime } = require('../timeUtil');
   const issues = db.prepare(`
     SELECT id, sent_at FROM issues WHERE list_id = ? AND status = 'sent' ORDER BY sent_at DESC
-  `).all(list.id);
+  `).all(list.id).map(issue => ({ ...issue, sent_at_display: formatIsraelDateTime(issue.sent_at) }));
 
   res.render('archive_list', { list, issues });
 });

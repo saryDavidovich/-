@@ -35,7 +35,7 @@
     <div class="list-row">
       <span><%= sub.email %></span>
       <span style="display:flex;align-items:center;gap:10px;">
-        <span class="item-meta">נרשם ב-<%= sub.created_at %></span>
+        <span class="item-meta">נרשם ב-<%= sub.created_at_display %></span>
         <form method="POST" action="/admin/lists/<%= list.id %>/subscribers/<%= sub.id %>/remove" onsubmit="return confirm('להסיר את <%= sub.email %> מהרשימה?');">
           <button class="btn danger" type="submit" style="padding:4px 10px;font-size:12px;">הסר</button>
         </form>

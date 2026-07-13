@@ -137,4 +137,47 @@ async function runWeeklyCompiler() {
   }
 }
 
-module.exports = { runWeeklyCompiler, compileAndSendIssue, sendViaSendGrid, rebuildIssueForResend };
+// נקראת כל דקה (ראה server.js) עם הזמן הנוכחי לפי שעון ישראל - שולחת רק את
+// הרשימות שהגיע הרגע המדויק שהוגדר להן (יום+שעה+דקה), ורק פעם אחת ביום
+// (last_auto_send_date מונע שליחה כפולה אם הבדיקה רצה כמה פעמים).
+async function checkAndRunDueSends() {
+  const { nowIsraelParts } = require('./timeUtil');
+  const { dow, hour, minute, dateStr } = nowIsraelParts();
+
+  const due = db.prepare(`
+    SELECT * FROM lists
+    WHERE active = 1 AND send_day = ? AND send_hour = ? AND send_minute = ?
+      AND (last_auto_send_date IS NULL OR last_auto_send_date != ?)
+  `).all(dow, hour, minute, dateStr);
+
+  for (const list of due) {
+    try {
+      console.log(`הגיע זמן השליחה האוטומטית של "${list.name}" (${dateStr} ${hour}:${String(minute).padStart(2, '0')} שעון ישראל).`);
+      await compileAndSendIssue(list);
+    } catch (err) {
+      console.error(`שגיאה בשליחה האוטומטית של רשימת "${list.name}":`, err.message);
+    } finally {
+      // מסמנים שנשלח היום גם אם compileAndSendIssue דילג (אין תוכן) או נכשל -
+      // כדי שלא ננסה שוב ושוב באותו יום ברגע שהדקה כבר חלפה.
+      db.prepare('UPDATE lists SET last_auto_send_date = ? WHERE id = ?').run(dateStr, list.id);
+    }
+  }
+}
+
+// "שליחת ניסיון" - בונה ושולח את הגיליון הנוכחי (בדיוק כמו שהוא ייראה
+// ללקוחות) לכתובת מייל אחת בלבד, בלי ליצור issue, בלי לסמן פריטים כ"נשלח",
+// ובלי לגעת בהיסטוריה בכלל - כדי שאפשר יהיה לבדוק איך זה מגיע לפני שמאשרים
+// שליחה אמיתית ללקוחות.
+async function sendTestIssue(list, toEmail) {
+  const entries = getOrderedApprovedEntries(list.id);
+  if (entries.length === 0) {
+    throw new Error('אין עדיין תוכן מאושר לגיליון הבא - אין מה לשלוח לבדיקה.');
+  }
+  const ads = entries.filter(e => e.kind === 'ad').map(e => e.item);
+  const html = renderIssue({ list, entries, unsubscribeToken: 'test-send', useCid: true });
+  const attachments = collectImageAttachments(ads);
+  await sendViaSendGrid(toEmail, `[בדיקה] ${list.name} - עדכון שבועי`, html, attachments);
+  return { entriesCount: entries.length };
+}
+
+module.exports = { runWeeklyCompiler, compileAndSendIssue, sendViaSendGrid, rebuildIssueForResend, checkAndRunDueSends, sendTestIssue };
