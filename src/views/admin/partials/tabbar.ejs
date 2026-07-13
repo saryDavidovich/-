@@ -1,6 +1,7 @@
 <h1><%= list.name %></h1>
 <div class="tabbar">
   <a href="/admin/lists/<%= list.id %>/queue" class="<%= page === 'queue' ? 'active' : '' %>">תור אישור</a>
+  <a href="/admin/lists/<%= list.id %>/approved" class="<%= page === 'approved' ? 'active' : '' %>">מאושר - טרם נשלח</a>
   <a href="/admin/lists/<%= list.id %>/compose/qa" class="<%= page === 'compose-qa' ? 'active' : '' %>">כתיבת שו"ת</a>
   <a href="/admin/lists/<%= list.id %>/compose/topic" class="<%= page === 'compose-topic' ? 'active' : '' %>">כתיבת נושא</a>
   <a href="/admin/lists/<%= list.id %>/compose/ad" class="<%= page === 'compose-ad' ? 'active' : '' %>">כתיבת מודעה</a>

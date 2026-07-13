@@ -91,10 +91,48 @@ function mailto(action, slug, subjectText, bodyText = '') {
 // ריבוע הסבר קטן בצבע הרשימה, שמופיע מתחת לכפתור מיד עם הלחיצה עליו (רק
 // בדפדפן - בתוכנת מייל שחוסמת JS, ה-onclick פשוט מתעלם ולא שובר כלום; שם
 // ההסבר עדיין קיים בגוף המייל שנפתח, ראה mailto() למעלה).
+// טקסטי ההסבר המדויקים שהמערכת עצמה מזינה מראש לתוך גוף המיילים (mailto
+// body) - שמורים כאן במקום אחד כדי ש-inbound.js יוכל להסיר אותם אוטומטית
+// אם לקוח שולח בחזרה בלי למחוק אותם (ראה getKnownInstructionStrings למטה).
+const INSTR_ASK = 'כתבו כאן את השאלה שלכם ולחצו שליחה - היא תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
+const INSTR_FREE_AD = 'כתבו כאן את תוכן המודעה ולחצו שליחה - זו מודעת שורה פשוטה (טקסט בלבד), תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
+const INSTR_REPLY = 'כתבו כאן את התגובה שלכם ולחצו שליחה - היא תצורף לשאלה הזו בגיליון הבא, אחרי אישור.';
+const INSTR_CONTACT = 'כתבו כאן את ההודעה שלכם למנהל הרשימה ולחצו שליחה - זו פנייה פרטית, היא לא מתפרסמת בגיליון.';
+
+function colorNamesList(list) {
+  try {
+    const palette = JSON.parse(list.ad_color_palette_json || '[]');
+    return palette.map(c => c.name).filter(Boolean);
+  } catch (e) { return []; }
+}
+
+// רשימת שמות הצבעים מוטמעת ישירות בטיוטת המייל (טקסט בלבד, לא ניתן להראות
+// עיגולי צבע אמיתיים בתוך תוכנת מייל חיצונית) - כך שהלקוח רואה בדיוק אילו
+// שמות אפשר לבקש, בלי צורך לחפש את זה במקום אחר.
+function instrPlusAd(list) {
+  const names = colorNamesList(list);
+  const example = names[0] || 'כחול';
+  const namesText = names.length ? ` הצבעים הזמינים: ${names.join(', ')}.` : '';
+  return `כתבו כאן את תוכן המודעה. רוצים לבחור צבע רקע? הוסיפו שורה בנוסח "צבע: ${example}".${namesText} לחצו שליחה - המודעה תיכנס לתור אישור.`;
+}
+function instrPremiumAd(list) {
+  const names = colorNamesList(list);
+  const example = names[0] || 'כחול';
+  const namesText = names.length ? ` הצבעים הזמינים: ${names.join(', ')}.` : '';
+  return `כתבו כאן את תוכן המודעה, אפשר לצרף תמונה או גיף כקובץ מצורף למייל הזה. רוצים לבחור צבע רקע? הוסיפו שורה בנוסח "צבע: ${example}".${namesText} לחצו שליחה - המודעה תיכנס לתור אישור.`;
+}
+
+// כל טקסטי ההוראה שהמערכת עצמה מכניסה, עבור רשימה מסוימת - inbound.js
+// מסיר כל הופעה מדויקת שלהם מהתוכן שנשמר, כדי שלא "ידביקו" לתוך המודעה/
+// תשובה/נושא בפועל אם לקוח שולח בחזרה בלי למחוק את הטיוטה המקורית.
+function getKnownInstructionStrings(list) {
+  return [INSTR_ASK, INSTR_FREE_AD, INSTR_REPLY, INSTR_CONTACT, instrPlusAd(list), instrPremiumAd(list)];
+}
+
 function clickHint(hintId, accent, text) {
   return `
-    <div id="${hintId}" style="display:none;margin-top:8px;font-size:12px;line-height:1.6;color:${accent};background:${accent}14;border:1px solid ${accent}55;border-radius:8px;padding:8px 12px;">
-      ${escapeHtml(text)}
+    <div id="${hintId}" style="display:none;margin-top:10px;font-size:12px;line-height:1.7;color:${accent};background:${accent}12;border:1px solid ${accent}45;border-radius:10px;padding:10px 14px;text-align:right;">
+      <span style="margin-inline-end:4px;">💡</span>${escapeHtml(text)}
     </div>`;
 }
 
@@ -200,8 +238,7 @@ function renderTopic(item, accent) {
 function renderQA(question, answer, accent) {
   const qBody = formatBody(question.body_edited ?? question.body_raw);
   const aBody = answer ? formatBody(answer.body_edited ?? answer.body_raw) : '';
-  const replyBody = 'כתבו כאן את התגובה שלכם ולחצו שליחה - היא תצורף לשאלה הזו בגיליון הבא, אחרי אישור.';
-  const replyUrl = mailto('reply', question.id, 'תגובה: ' + (question.subject || ''), replyBody);
+  const replyUrl = mailto('reply', question.id, 'תגובה: ' + (question.subject || ''), INSTR_REPLY);
   const hintId = `hint-reply-${question.id}`;
 
   const inner = `
@@ -236,37 +273,37 @@ function renderTopButtons(list) {
   </td></tr>`;
 }
 
-// שורת כפתורים: שליחת שאלה + פרסום מודעה בשלוש הרמות - כל הכפתורים
-// פותחים mailto מוכן מראש, כדי שכל הפעולות יעבדו גם דרך תוכנת מייל בלבד.
+// שורת כפתורים: שליחת שאלה + פרסום מודעה (כל רמה עם מתג הצגה נפרד) +
+// יצירת קשר - כל הכפתורים פותחים mailto מוכן מראש.
 function renderActionButtons(list, accent) {
   const buttons = [];
   const hints = [];
 
-  const askBody = 'כתבו כאן את השאלה שלכם ולחצו שליחה - היא תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
-
   if (list.show_ask_button) {
     const hintId = 'hint-ask-' + list.id;
-    buttons.push(`<a href="${mailto('ask', list.slug, 'שאלה חדשה', askBody)}" onclick="${showHintOnClick(hintId)}" style="${btnStyle(accent, true)}">לשליחת שאלה חדשה</a>`);
+    buttons.push(`<a href="${mailto('ask', list.slug, 'שאלה חדשה', INSTR_ASK)}" onclick="${showHintOnClick(hintId)}" style="${btnStyle(accent, true)}">לשליחת שאלה חדשה</a>`);
     hints.push(clickHint(hintId, accent, 'נפתחה הודעת מייל מוכנה - כתבו את השאלה שלכם ולחצו שליחה.'));
   }
 
-  if (list.show_ad_buttons) {
+  if (list.show_ads_free) {
     const hintFree = 'hint-ads-' + list.id;
-    const hintPlus = 'hint-adsplus-' + list.id;
-    const hintPremium = 'hint-adspremium-' + list.id;
-
-    const freeBody = 'כתבו כאן את תוכן המודעה ולחצו שליחה - זו מודעת שורה פשוטה (טקסט בלבד), תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
-    const plusBody = 'כתבו כאן את תוכן המודעה. רוצים לבחור צבע רקע? הוסיפו שורה בנוסח "צבע: כחול" - רשימת הצבעים שאפשר לבקש מופיעה למטה בגיליון. לחצו שליחה - המודעה תיכנס לתור אישור.';
-    const premiumBody = 'כתבו כאן את תוכן המודעה, אפשר לצרף תמונה או גיף כקובץ מצורף למייל הזה. רוצים לבחור צבע רקע? הוסיפו שורה בנוסח "צבע: כחול" - רשימת הצבעים שאפשר לבקש מופיעה למטה בגיליון. לחצו שליחה - המודעה תיכנס לתור אישור.';
-
-    buttons.push(`<a href="${mailto('ads', list.slug, 'מודעת שורה', freeBody)}" onclick="${showHintOnClick(hintFree)}" style="${btnStyle(accent, false)}">פרסום מודעת שורה (חינם)</a>`);
-    buttons.push(`<a href="${mailto('adsplus', list.slug, 'מודעה מודגשת', plusBody)}" onclick="${showHintOnClick(hintPlus)}" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
-    buttons.push(`<a href="${mailto('adspremium', list.slug, 'מודעה פרימיום', premiumBody)}" onclick="${showHintOnClick(hintPremium)}" style="${btnStyle(accent, false)}">פרסום מודעה פרימיום</a>`);
-
+    buttons.push(`<a href="${mailto('ads', list.slug, 'מודעת שורה', INSTR_FREE_AD)}" onclick="${showHintOnClick(hintFree)}" style="${btnStyle(accent, false)}">פרסום מודעת שורה (חינם)</a>`);
     hints.push(clickHint(hintFree, accent, 'נפתחה הודעת מייל מוכנה - מודעת שורה פשוטה, טקסט בלבד. כתבו את התוכן ולחצו שליחה.'));
-    hints.push(clickHint(hintPlus, accent, 'נפתחה הודעת מייל מוכנה - כתבו את התוכן, ואם תרצו גם צבע רקע כתבו שורה כמו "צבע: כחול".'));
-    hints.push(clickHint(hintPremium, accent, 'נפתחה הודעת מייל מוכנה - אפשר לצרף תמונה למייל ולבקש צבע רקע בשורה כמו "צבע: כחול".'));
   }
+  if (list.show_ads_plus) {
+    const hintPlus = 'hint-adsplus-' + list.id;
+    buttons.push(`<a href="${mailto('adsplus', list.slug, 'מודעה מודגשת', instrPlusAd(list))}" onclick="${showHintOnClick(hintPlus)}" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
+    hints.push(clickHint(hintPlus, accent, 'נפתחה הודעת מייל מוכנה - כתבו את התוכן. רשימת הצבעים הזמינים כתובה בטיוטה עצמה.'));
+  }
+  if (list.show_ads_premium) {
+    const hintPremium = 'hint-adspremium-' + list.id;
+    buttons.push(`<a href="${mailto('adspremium', list.slug, 'מודעה פרימיום', instrPremiumAd(list))}" onclick="${showHintOnClick(hintPremium)}" style="${btnStyle(accent, false)}">פרסום מודעה פרימיום</a>`);
+    hints.push(clickHint(hintPremium, accent, 'נפתחה הודעת מייל מוכנה - אפשר לצרף תמונה. רשימת הצבעים הזמינים כתובה בטיוטה עצמה.'));
+  }
+
+  const hintContact = 'hint-contact-' + list.id;
+  buttons.push(`<a href="${mailto('contact', list.slug, 'פנייה למנהל הרשימה', INSTR_CONTACT)}" onclick="${showHintOnClick(hintContact)}" style="${btnStyle(accent, false)}">צור קשר</a>`);
+  hints.push(clickHint(hintContact, accent, 'נפתחה הודעת מייל מוכנה - זו פנייה פרטית למנהל, לא מתפרסמת בגיליון.'));
 
   if (buttons.length === 0) return '';
 
@@ -285,27 +322,9 @@ function btnStyle(accent, filled) {
     : `display:inline-block;font-size:13px;color:${accent};background:transparent;border:1px solid ${accent};text-decoration:none;padding:7px 14px;border-radius:16px;margin:3px;`;
 }
 
-// מקרא צבעים - מוצג תמיד (לא רק בלחיצה), כדי שלקוח שכותב "צבע: X" במודעה
-// מודגשת/פרימיום ידע בדיוק לאיזה גוון הוא מתכוון, בלי לנחש. לא תלוי ב-JS
-// כי זה HTML/צבעים רגילים, מוצג בכל תוכנת מייל.
-function renderColorLegend(list, accent) {
-  if (!list.show_ad_buttons) return '';
-  let palette = [];
-  try { palette = JSON.parse(list.ad_color_palette_json || '[]'); } catch (e) { palette = []; }
-  if (palette.length === 0) return '';
-
-  const swatches = palette.map(c => `
-    <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:#5f5e5a;margin:3px 8px 3px 0;">
-      <span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:${escapeHtml(c.hex)};border:1px solid rgba(0,0,0,0.15);vertical-align:middle;"></span>
-      ${escapeHtml(c.name)}
-    </span>`).join('');
-
-  return `
-  <tr><td style="padding:0 24px 14px;text-align:center;">
-    <div style="font-size:11px;color:${accent};font-weight:600;margin-bottom:6px;">צבעים שאפשר לבקש במודעה מודגשת/פרימיום (כתבו "צבע: השם" בגוף המייל)</div>
-    <div>${swatches}</div>
-  </td></tr>`;
-}
+// [renderColorLegend הוסרה] - רשימת הצבעים כבר לא מוצגת בגיליון שנשלח
+// למנויים; היא מוטמעת ישירות בטיוטת המייל של הלקוח (ראה instrPlusAd /
+// instrPremiumAd למעלה) - שם היא רלוונטית (כשהוא בוחר צבע), לא כאן.
 
 // כפתורי הצטרפות לשאר הרשימות הפעילות + כפתור הצטרפות לכולן ביחד, בתחתית
 // הגיליון - כדי שמנוי לרשימה אחת יגלה בקלות שיש עוד רשימות ויוכל להצטרף
@@ -369,7 +388,6 @@ function renderIssue({ list, entries = [], unsubscribeToken, useCid = false }) {
       <table role="presentation" width="100%">${bodyHtml}</table>
     </td></tr>
     ${renderActionButtons(list, accent)}
-    ${renderColorLegend(list, accent)}
     ${renderOtherListsPromo(list)}
     <tr>
       <td style="padding:18px 24px;background:#f6f5f1;text-align:center;">
@@ -385,4 +403,4 @@ function renderIssue({ list, entries = [], unsubscribeToken, useCid = false }) {
 </html>`;
 }
 
-module.exports = { renderIssue, escapeHtml, collectImageAttachments };
+module.exports = { renderIssue, escapeHtml, collectImageAttachments, getKnownInstructionStrings };

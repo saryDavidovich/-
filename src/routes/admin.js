@@ -54,7 +54,59 @@ router.get('/', requireAuth, (req, res) => {
   const flash = req.session.flash || null;
   delete req.session.flash;
   const inboundDomain = process.env.INBOUND_DOMAIN || 'yourdomain.com';
-  res.render('admin/dashboard', { lists, flash, inboundDomain, allLists: lists });
+  const contactCount = db.prepare('SELECT COUNT(*) AS c FROM contact_messages').get().c;
+  res.render('admin/dashboard', { lists, flash, inboundDomain, allLists: lists, contactCount });
+});
+
+// -------- הודעות "צור קשר" מכל הרשימות, עם ציון מאיזו רשימה כל אחת הגיעה --------
+router.get('/contact', requireAuth, (req, res) => {
+  const { formatIsraelDateTime } = require('../timeUtil');
+  const messages = db.prepare(`
+    SELECT cm.*, l.name AS list_name, l.accent_color AS list_accent
+    FROM contact_messages cm
+    LEFT JOIN lists l ON l.id = cm.list_id
+    ORDER BY cm.created_at DESC
+  `).all().map(m => ({ ...m, created_at_display: formatIsraelDateTime(m.created_at) }));
+  res.render('admin/contact', { messages, allLists: getAllLists() });
+});
+
+router.post('/contact/:id/delete', requireAuth, (req, res) => {
+  db.prepare('DELETE FROM contact_messages WHERE id = ?').run(req.params.id);
+  res.redirect('/admin/contact');
+});
+
+// -------- הורדת אקסל של כל המנויים במערכת - מאוחד, כל מייל פעם אחת, עם
+// ציון לאילו רשימות הוא רשום --------
+router.get('/subscribers/export-all.xlsx', requireAuth, (req, res) => {
+  const XLSX = require('xlsx');
+  const lists = db.prepare('SELECT id, name FROM lists ORDER BY name ASC').all();
+  const rows = db.prepare(`
+    SELECT s.email, l.name AS list_name
+    FROM subscribers s JOIN lists l ON l.id = s.list_id
+    WHERE s.unsubscribed = 0
+    ORDER BY s.email ASC
+  `).all();
+
+  const byEmail = new Map();
+  for (const row of rows) {
+    if (!byEmail.has(row.email)) byEmail.set(row.email, new Set());
+    byEmail.get(row.email).add(row.list_name);
+  }
+
+  const header = ['אימייל', ...lists.map(l => l.name)];
+  const sheetRows = [header];
+  for (const [email, listNames] of byEmail.entries()) {
+    sheetRows.push([email, ...lists.map(l => (listNames.has(l.name) ? '✓' : ''))]);
+  }
+
+  const sheet = XLSX.utils.aoa_to_sheet(sheetRows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, 'כל המנויים');
+
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="all-subscribers.xlsx"');
+  res.send(buffer);
 });
 
 // -------- Lists (topics) management --------
@@ -80,6 +132,65 @@ function loadListOr404(req, res) {
   if (!list) { res.status(404).send('רשימה לא נמצאה'); return null; }
   return list;
 }
+
+// -------- ניהול תוכן שכבר אושר אבל עוד לא נשלח - עריכה או הסרה, גם אחרי
+// שכבר אישרת (למשל גילית שתמונה לא מתאימה או שהגיליון נהיה גדול מדי) --------
+router.get('/lists/:id/approved', requireAuth, (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+
+  const entries = getOrderedApprovedEntries(list.id);
+  res.render('admin/approved', { list, entries, allLists: getAllLists() });
+});
+
+// עריכת שאלה/תשובה/נושא שכבר אושרו - נשארים באותו מצב (approved), רק
+// מעדכנים את התוכן.
+router.post('/items/:id/edit', requireAuth, express.urlencoded({ extended: true }), (req, res) => {
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).send('לא נמצא');
+
+  db.prepare(`UPDATE items SET body_edited = ?, subject = ? WHERE id = ?`)
+    .run(req.body.body_edited, req.body.subject || '', item.id);
+
+  res.redirect(`/admin/lists/${item.list_id}/approved`);
+});
+
+// עריכת מודעה שכבר אושרה - כולל אפשרות לשנות רמה/צבעים/תמונה, אותו טופס
+// כמו באישור בתור, רק שהפריט כבר approved ונשאר approved.
+router.post('/items/:id/edit-ad', requireAuth, upload.single('image'), async (req, res) => {
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).send('לא נמצא');
+
+  const paidTier = req.body.paid_tier || item.paid_tier;
+  const useColor = paidTier === 'plus' || paidTier === 'premium';
+
+  let images = paidTier === 'premium' ? JSON.parse(item.images_json || '[]') : [];
+  if (req.file && paidTier === 'premium') {
+    const { compressUploadedImage } = require('../imageProcessing');
+    const finalPath = await compressUploadedImage(req.file.path);
+    images = [`/uploads/${path.basename(finalPath)}`];
+  }
+
+  db.prepare(`
+    UPDATE items SET body_edited = ?, subject = ?, paid_tier = ?, images_json = ?, bg_color = ?, text_color = ?
+    WHERE id = ?
+  `).run(
+    req.body.body_edited, req.body.subject || '', paidTier, JSON.stringify(images),
+    useColor ? (req.body.bg_color || null) : null, useColor ? (req.body.text_color || null) : null,
+    item.id
+  );
+
+  res.redirect(`/admin/lists/${item.list_id}/approved`);
+});
+
+// מוריד פריט (מודעה/שאלה/תשובה/נושא) מהגיליון הבא אחרי שכבר אושר - הופך
+// אותו ל"נדחה" (לא נמחק, נשאר בהיסטוריה שהיה כזה, פשוט לא ייכלל בשליחה).
+router.post('/items/:id/unapprove', requireAuth, (req, res) => {
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).send('לא נמצא');
+  db.prepare(`UPDATE items SET status = 'rejected' WHERE id = ?`).run(item.id);
+  res.redirect(`/admin/lists/${item.list_id}/approved`);
+});
 
 // -------- Approval queue --------
 router.get('/lists/:id/queue', requireAuth, (req, res) => {
@@ -335,7 +446,7 @@ router.post('/lists/:id/settings', requireAuth, express.urlencoded({ extended: t
   const list = loadListOr404(req, res);
   if (!list) return;
 
-  const { name, description, accent_color, show_ad_buttons, show_ask_button, send_day, send_hour, send_minute } = req.body;
+  const { name, description, accent_color, show_ads_free, show_ads_plus, show_ads_premium, show_ask_button, send_day, send_hour, send_minute } = req.body;
 
   // בונים את הפלטה מתוך שני מערכים מקבילים (color_name[] / color_hex[]) -
   // מתעלמים משורות ריקות (שם ריק, למשל אם הוסיפו שורה ולא מילאו אותה).
@@ -346,12 +457,13 @@ router.post('/lists/:id/settings', requireAuth, express.urlencoded({ extended: t
     .filter(c => c.name);
 
   db.prepare(`
-    UPDATE lists SET name = ?, description = ?, accent_color = ?, show_ad_buttons = ?, show_ask_button = ?,
+    UPDATE lists SET name = ?, description = ?, accent_color = ?,
+      show_ads_free = ?, show_ads_plus = ?, show_ads_premium = ?, show_ask_button = ?,
       send_day = ?, send_hour = ?, send_minute = ?, ad_color_palette_json = ?
     WHERE id = ?
   `).run(
     name.trim(), description || '', accent_color || list.accent_color,
-    show_ad_buttons ? 1 : 0, show_ask_button ? 1 : 0,
+    show_ads_free ? 1 : 0, show_ads_plus ? 1 : 0, show_ads_premium ? 1 : 0, show_ask_button ? 1 : 0,
     parseInt(send_day, 10) || 0, parseInt(send_hour, 10) || 0, parseInt(send_minute, 10) || 0,
     JSON.stringify(palette), list.id
   );
@@ -388,6 +500,37 @@ router.post('/lists/:id/subscribers/:subId/remove', requireAuth, (req, res) => {
   if (!list) return;
   db.prepare(`UPDATE subscribers SET unsubscribed = 1 WHERE id = ? AND list_id = ?`).run(req.params.subId, list.id);
   res.redirect(`/admin/lists/${list.id}/subscribers`);
+});
+
+// -------- הסרת כמה מנויים שסומנו בבת אחת --------
+router.post('/lists/:id/subscribers/bulk-remove', requireAuth, express.urlencoded({ extended: true }), (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+  const ids = [].concat(req.body.ids || []).map(Number).filter(Boolean);
+  if (ids.length) {
+    const placeholders = ids.map(() => '?').join(',');
+    db.prepare(`UPDATE subscribers SET unsubscribed = 1 WHERE list_id = ? AND id IN (${placeholders})`).run(list.id, ...ids);
+    req.session.flash = `הוסרו ${ids.length} מנויים.`;
+  }
+  res.redirect(`/admin/lists/${list.id}/subscribers`);
+});
+
+// -------- הורדת אקסל של מנויי הרשימה הזו --------
+router.get('/lists/:id/subscribers/export.xlsx', requireAuth, (req, res) => {
+  const list = loadListOr404(req, res);
+  if (!list) return;
+
+  const XLSX = require('xlsx');
+  const subs = db.prepare(`SELECT email, created_at FROM subscribers WHERE list_id = ? AND unsubscribed = 0 ORDER BY email ASC`).all(list.id);
+  const rows = [['אימייל', 'תאריך הצטרפות'], ...subs.map(s => [s.email, s.created_at])];
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, 'מנויים');
+
+  const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="subscribers-${list.slug}.xlsx"`);
+  res.send(buffer);
 });
 
 // -------- העלאת קובץ אקסל/CSV עם הרבה מיילים בבת אחת --------

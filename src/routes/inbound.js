@@ -73,6 +73,19 @@ function extractLinks(body) {
   return [...body.matchAll(/https?:\/\/\S+/gi)].map(m => m[0]);
 }
 
+// מסיר כל הופעה מדויקת של טקסטי ההוראה שהמערכת עצמה הזינה מראש לתוך
+// המייל (ראה getKnownInstructionStrings ב-templates.js) - כדי שאם לקוח
+// שולח בחזרה בלי למחוק את הטיוטה המקורית, ההוראות עצמן לא "יידבקו" בתוך
+// המודעה/שאלה/תשובה/נושא שמתפרסמים בפועל.
+function stripKnownInstructions(text, list) {
+  const { getKnownInstructionStrings } = require('../templates');
+  let cleaned = String(text || '');
+  for (const instr of getKnownInstructionStrings(list)) {
+    cleaned = cleaned.split(instr).join('');
+  }
+  return cleaned.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 // מחפשת שורה בנוסח "צבע: X" או "צבע רקע: X" בגוף המייל - X יכול להיות שם
 // צבע מהפלטה שהוגדרה לרשימה הזו בהגדרות (ראה admin.js /settings), או קוד
 // hex ישיר (#A7D8F0 / A7D8F0) כגיבוי לא-מפורסם. מחזירה את הצבע שנמצא ואת
@@ -151,17 +164,17 @@ router.post('/inbound', upload.any(), async (req, res) => {
 
       // בקשת צבע רקע דרך שורת טקסט ("צבע: כחול" וכו') - נתמך במודגשת
       // ובפרימיום. השורה עצמה מוסרת מהתוכן שיוצג בגיליון.
-      let bodyText = text;
+      let bodyText = stripKnownInstructions(text, list);
       let bgColor = null;
       let textColor = null;
       if (type === 'ad' && (tier === 'plus' || tier === 'premium')) {
         let palette = [];
         try { palette = JSON.parse(list.ad_color_palette_json || '[]'); } catch (e) { palette = []; }
-        const colorRequest = extractRequestedColor(text, palette);
+        const colorRequest = extractRequestedColor(bodyText, palette);
         if (colorRequest) {
           bgColor = colorRequest.bg;
           textColor = pickReadableTextColor(colorRequest.bg);
-          bodyText = text.replace(colorRequest.matchedLine, '').trim();
+          bodyText = bodyText.replace(colorRequest.matchedLine, '').trim();
         }
       }
 
@@ -176,6 +189,18 @@ router.post('/inbound', upload.any(), async (req, res) => {
       return res.status(200).send('queued');
     }
 
+    // פנייה פרטית למנהל ("צור קשר" בתחתית הגיליון) - לא מתפרסמת בגיליון,
+    // נשמרת בטבלה נפרדת ומוצגת בלוח הבקרה עם ציון מאיזו רשימה היא הגיעה.
+    if (action === 'contact') {
+      const list = db.prepare('SELECT * FROM lists WHERE slug = ?').get(extra);
+      const cleanedText = stripKnownInstructions(text, list || {});
+      db.prepare(`
+        INSERT INTO contact_messages (list_id, from_email, subject, body) VALUES (?, ?, ?, ?)
+      `).run(list ? list.id : null, fromEmail, subject, cleanedText);
+      console.log(`פנייה חדשה מ-${fromEmail}${list ? ' (רשימת "' + list.name + '")' : ''}.`);
+      return res.status(200).send('contact received');
+    }
+
     if (action === 'reply') {
       const parentId = parseInt(extra, 10);
       const question = db.prepare('SELECT * FROM items WHERE id = ? AND type = ?').get(parentId, 'question');
@@ -183,11 +208,13 @@ router.post('/inbound', upload.any(), async (req, res) => {
         console.warn(`תגובה הגיעה לשאלה שלא נמצאה, מזהה=${parentId}`);
         return res.status(200).send('ignored: unknown question');
       }
+      const list = db.prepare('SELECT * FROM lists WHERE id = ?').get(question.list_id);
+      const cleanedText = stripKnownInstructions(text, list);
 
       db.prepare(`
         INSERT INTO items (list_id, type, parent_id, status, from_email, subject, body_raw, word_count)
         VALUES (?, 'answer', ?, 'pending', ?, ?, ?, ?)
-      `).run(question.list_id, question.id, fromEmail, subject, text, countWords(text));
+      `).run(question.list_id, question.id, fromEmail, subject, cleanedText, countWords(cleanedText));
 
       console.log(`תגובה נקלטה בהצלחה לשאלה #${question.id} מאת ${fromEmail}`);
       return res.status(200).send('queued');

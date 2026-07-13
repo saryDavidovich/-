@@ -27,8 +27,16 @@
         הצג כפתור "לשליחת שאלה חדשה" בתוך הגיליון
       </label>
       <label style="display:flex;align-items:center;gap:8px;margin-top:8px;">
-        <input type="checkbox" name="show_ad_buttons" value="1" <%= list.show_ad_buttons ? 'checked' : '' %> style="width:auto;margin:0;" />
-        הצג כפתורי "פרסום מודעה" (חינם / מודגשת / פרימיום) בתוך הגיליון
+        <input type="checkbox" name="show_ads_free" value="1" <%= list.show_ads_free ? 'checked' : '' %> style="width:auto;margin:0;" />
+        הצג כפתור "מודעת שורה" (חינם) בתוך הגיליון
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+        <input type="checkbox" name="show_ads_plus" value="1" <%= list.show_ads_plus ? 'checked' : '' %> style="width:auto;margin:0;" />
+        הצג כפתור "מודעה מודגשת" בתוך הגיליון
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+        <input type="checkbox" name="show_ads_premium" value="1" <%= list.show_ads_premium ? 'checked' : '' %> style="width:auto;margin:0;" />
+        הצג כפתור "מודעה פרימיום" בתוך הגיליון
       </label>
 
       <div class="sidebar-divider" style="background:#e3e1d8;margin:16px 0;"></div>

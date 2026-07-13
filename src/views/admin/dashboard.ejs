@@ -1,8 +1,12 @@
 <%- include('partials/header', { pageTitle: 'לוח בקרה', page: 'dashboard', allLists: lists }) %>
 
-  <div style="display:flex;justify-content:space-between;align-items:center;">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
     <h1>לוח בקרה</h1>
-    <a class="btn" href="/admin/lists/new">+ נושא חדש</a>
+    <div style="display:flex;gap:8px;">
+      <a class="btn secondary" href="/admin/contact">יצירת קשר<% if (contactCount > 0) { %> <span class="pill pending"><%= contactCount %></span><% } %></a>
+      <a class="btn secondary" href="/admin/subscribers/export-all.xlsx">הורדת אקסל - כל המנויים במערכת</a>
+      <a class="btn" href="/admin/lists/new">+ נושא חדש</a>
+    </div>
   </div>
 
   <% if (flash) { %>

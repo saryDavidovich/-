@@ -135,6 +135,30 @@ if (!listCols.includes('ad_color_palette_json')) {
 db.prepare("UPDATE lists SET ad_color_palette_json = ? WHERE ad_color_palette_json IS NULL")
   .run(DEFAULT_COLOR_PALETTE);
 
+// כפתורי "פרסום מודעה" - היה מתג אחד לכל השלוש ביחד, עכשיו נפרד לכל רמה
+// (למשל אפשר להציג רק "מודעת שורה" בלי מודגשת/פרימיום). מיגרציה: מי
+// שהיה לו show_ad_buttons=1 מקבל את כל השלושה מופעלות (כמו שהיה בפועל
+// עד עכשיו), כדי שכלום לא ישתנה מבחינת מי שכבר משתמש במערכת.
+if (!listCols.includes('show_ads_free')) {
+  db.exec("ALTER TABLE lists ADD COLUMN show_ads_free INTEGER DEFAULT 1");
+  db.exec("ALTER TABLE lists ADD COLUMN show_ads_plus INTEGER DEFAULT 1");
+  db.exec("ALTER TABLE lists ADD COLUMN show_ads_premium INTEGER DEFAULT 1");
+  db.exec("UPDATE lists SET show_ads_free = show_ad_buttons, show_ads_plus = show_ad_buttons, show_ads_premium = show_ad_buttons");
+}
+
+// הודעות "צור קשר" מהלקוחות למנהל - טבלה נפרדת (לא items, כי אלה לא
+// מיועדות לפרסום בגיליון) - עם ציון מאיזו רשימה כל הודעה הגיעה.
+db.exec(`
+CREATE TABLE IF NOT EXISTS contact_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  list_id INTEGER REFERENCES lists(id) ON DELETE SET NULL,
+  from_email TEXT,
+  subject TEXT DEFAULT '',
+  body TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+`);
+
 // ב. טבלת items: אם היא נוצרה עם הסכמה הישנה (בלי 'article' ובלי צבעים),
 // צריך לבנות אותה מחדש כי SQLite לא מאפשר לשנות CHECK קיים. שומרים את כל
 // הנתונים הקיימים בתהליך.
