@@ -328,13 +328,13 @@ function renderExpandableTest(list, accent) {
 
   return `
     <label style="cursor:pointer;display:inline-block;margin:3px;vertical-align:top;">
-      <input type="checkbox" class="cbhack-toggle" style="display:none;" />
-      <span style="display:inline-block;font-size:13px;color:#fff;background:${accent};text-decoration:none;padding:8px 14px;border-radius:16px;">🧪 מודעה מודגשת - לחצו לפרטים (ניסיון)</span>
+      <input type="checkbox" class="cbhack-toggle" style="display:none;cursor:pointer;" />
+      <span style="cursor:pointer;display:inline-block;font-size:13px;color:#fff;background:${accent};text-decoration:none;padding:8px 14px;border-radius:16px;">🧪 מודעה מודגשת - לחצו לפרטים (ניסיון)</span>
       <label class="cbhack-box" style="display:none;text-align:right;margin-top:10px;max-width:280px;border:1px solid ${accent}55;background:${accent}12;border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.7;color:#2c2c2a;cursor:default;">
         <strong>מודעה מודגשת</strong> - המודעה תפורסם בתוך מסגרת צבעונית בולטת בגיליון.<br><br>
         צבעים שאפשר לבקש: ${escapeHtml(swatchesText)}
         <br><br>
-        <a href="${mailtoUrl}" style="display:inline-block;margin-top:4px;font-size:13px;color:#fff;background:${accent};padding:8px 14px;border-radius:16px;text-decoration:none;">לפתיחת המייל ולכתיבת המודעה &rarr;</a>
+        <a href="${mailtoUrl}" style="cursor:pointer;display:inline-block;margin-top:4px;font-size:13px;color:#fff;background:${accent};padding:8px 14px;border-radius:16px;text-decoration:none;">לפתיחת המייל ולכתיבת המודעה &rarr;</a>
       </label>
     </label>`;
 }
