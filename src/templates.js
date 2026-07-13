@@ -294,9 +294,7 @@ function renderActionButtons(list, accent) {
     const hintPlus = 'hint-adsplus-' + list.id;
     buttons.push(`<a href="${mailto('adsplus', list.slug, 'מודעה מודגשת', instrPlusAd(list))}" onclick="${showHintOnClick(hintPlus)}" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
     hints.push(clickHint(hintPlus, accent, 'נפתחה הודעת מייל מוכנה - כתבו את התוכן. רשימת הצבעים הזמינים כתובה בטיוטה עצמה.'));
-    buttons.push(renderExpandableTest(list, accent));
-    buttons.push(renderTargetTest(list, accent));
-    buttons.push(renderDetailsTest(list, accent));
+    buttons.push(renderHoverTest(list, accent));
   }
   if (list.show_ads_premium) {
     const hintPremium = 'hint-adspremium-' + list.id;
@@ -319,68 +317,33 @@ function renderActionButtons(list, accent) {
   </td></tr>`;
 }
 
-// ניסיון: פאנל שנפתח בלחיצה בלי JavaScript בכלל (checkbox hack - CSS
-// טהור). נוסף כרגע רק לכפתור "מודעה מודגשת", בנוסף לכפתור הרגיל שכבר
-// עובד (לא במקומו) - כדי לבדוק אם זה בפועל נתמך אצל הלקוחות שלך לפני
-// שמחליטים אם להרחיב את זה לשאר הכפתורים.
-function renderExpandableTest(list, accent) {
+// [שלושה ניסיונות הוסרו: checkbox hack, קישור עוגן + :target, ו-<details>]
+// כל השלושה נבדקו בפועל בג'ימייל אמיתי ונכשלו, כל אחד בצורה אחרת - checkbox
+// קפא לגמרי, קישור העוגן הוצג אך לא הגיב ללחיצה, ו-<details> לא נסגר בכלל
+// (הוצג פתוח תמיד, עם עיצוב חלקי). המסקנה: Gmail חוסם כל מנגנון
+// אינטראקטיביות מבוסס HTML/CSS גרידא בתוך מייל שהתקבל, ללא יוצא מן הכלל -
+// הדרך היחידה הידועה לאינטראקטיביות אמיתית בג'ימייל היא AMP for Email
+// (דורשת רישום ואישור מראש מול גוגל, לא רק שינוי קוד).
+
+// ניסיון 4: מבוסס :hover במקום לחיצה - יש תיעוד ספציפי ש-Gmail (גם
+// בדפדפן וגם באפליקציית אנדרואיד) תומך ב-:hover, בניגוד ל-checkbox/target/
+// details. החיסרון: זה מעבר עכבר, לא לחיצה - בטלפון (מסך מגע) ההתנהגות
+// לא עקבית בין מכשירים, חלקם מדמים hover בהקשה ראשונה וחלקם לא בכלל.
+function renderHoverTest(list, accent) {
   const names = colorNamesList(list);
   const swatchesText = names.length ? names.join(', ') : '(לא הוגדרו צבעים)';
   const mailtoUrl = mailto('adsplus', list.slug, 'מודעה מודגשת', instrPlusAd(list));
 
   return `
-    <label style="cursor:pointer;display:inline-block;margin:3px;vertical-align:top;">
-      <input type="checkbox" class="cbhack-toggle" style="display:none;cursor:pointer;" />
-      <span style="cursor:pointer;display:inline-block;font-size:13px;color:#fff;background:${accent};text-decoration:none;padding:8px 14px;border-radius:16px;">🧪 מודעה מודגשת - לחצו לפרטים (ניסיון)</span>
-      <label class="cbhack-box" style="display:none;text-align:right;margin-top:10px;max-width:280px;border:1px solid ${accent}55;background:${accent}12;border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.7;color:#2c2c2a;cursor:default;">
-        <strong>מודעה מודגשת</strong> - המודעה תפורסם בתוך מסגרת צבעונית בולטת בגיליון.<br><br>
-        צבעים שאפשר לבקש: ${escapeHtml(swatchesText)}
-        <br><br>
-        <a href="${mailtoUrl}" style="cursor:pointer;display:inline-block;margin-top:4px;font-size:13px;color:#fff;background:${accent};padding:8px 14px;border-radius:16px;text-decoration:none;">לפתיחת המייל ולכתיבת המודעה &rarr;</a>
-      </label>
-    </label>`;
-}
-
-// ניסיון 2: אותו רעיון כמו renderExpandableTest, אבל בלי checkbox בכלל -
-// קישור <a href="#..."> אמיתי + CSS :target. זו טכניקה שונה טכנית
-// מ-checkbox hack, ויש לה תמיכה שונה בתוכנות מייל (למשל: Gmail לאנדרואיד
-// תומך בטכניקה מבוססת-עוגן בשם "Filmstrip" גם כשהוא לא תומך ב-checkbox).
-function renderTargetTest(list, accent) {
-  const boxId = 'adsplus-target-' + list.id;
-  const names = colorNamesList(list);
-  const swatchesText = names.length ? names.join(', ') : '(לא הוגדרו צבעים)';
-  const mailtoUrl = mailto('adsplus', list.slug, 'מודעה מודגשת', instrPlusAd(list));
-
-  return `
-    <span style="display:inline-block;position:relative;margin:3px;vertical-align:top;">
-      <a href="#${boxId}" style="display:inline-block;font-size:13px;color:#fff;background:${accent};text-decoration:none;padding:8px 14px;border-radius:16px;">🔗 מודעה מודגשת - לחצו לפרטים (ניסיון 2)</a>
-      <div id="${boxId}" class="target-box" style="text-align:right;margin-top:10px;max-width:280px;border:1px solid ${accent}55;background:${accent}12;border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.7;color:#2c2c2a;">
+    <span class="hover-test-wrap" style="display:inline-block;position:relative;margin:3px;vertical-align:top;">
+      <span style="display:inline-block;font-size:13px;color:#fff;background:${accent};padding:8px 14px;border-radius:16px;">🖱️ מודעה מודגשת - העבירו עכבר לפרטים (ניסיון 4)</span>
+      <span class="hover-test-box" style="display:none;position:absolute;top:100%;right:0;z-index:10;text-align:right;width:260px;border:1px solid ${accent}55;background:#fffdf8;box-shadow:0 4px 14px rgba(0,0,0,0.12);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.7;color:#2c2c2a;">
         <strong>מודעה מודגשת</strong> - המודעה תפורסם בתוך מסגרת צבעונית בולטת בגיליון.<br><br>
         צבעים שאפשר לבקש: ${escapeHtml(swatchesText)}
         <br><br>
         <a href="${mailtoUrl}" style="display:inline-block;margin-top:4px;font-size:13px;color:#fff;background:${accent};padding:8px 14px;border-radius:16px;text-decoration:none;">לפתיחת המייל ולכתיבת המודעה &rarr;</a>
-      </div>
+      </span>
     </span>`;
-}
-
-// ניסיון 3: תגית HTML נייטיבית - <details>/<summary> - עם התנהגות
-// הרחבה/כיווץ מובנית בדפדפן, בלי שום CSS מיוחד ובלי form element בכלל.
-// אולי דווקא בגלל שזו לא "טכניקה עוקפת" אלא תגית רגילה, Gmail לא תחסום אותה.
-function renderDetailsTest(list, accent) {
-  const names = colorNamesList(list);
-  const swatchesText = names.length ? names.join(', ') : '(לא הוגדרו צבעים)';
-  const mailtoUrl = mailto('adsplus', list.slug, 'מודעה מודגשת', instrPlusAd(list));
-
-  return `
-    <details style="display:inline-block;margin:3px;vertical-align:top;text-align:right;max-width:280px;">
-      <summary style="cursor:pointer;display:inline-block;font-size:13px;color:#fff;background:${accent};text-decoration:none;padding:8px 14px;border-radius:16px;list-style:none;">📄 מודעה מודגשת - לחצו לפרטים (ניסיון 3)</summary>
-      <div style="margin-top:10px;border:1px solid ${accent}55;background:${accent}12;border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.7;color:#2c2c2a;">
-        <strong>מודעה מודגשת</strong> - המודעה תפורסם בתוך מסגרת צבעונית בולטת בגיליון.<br><br>
-        צבעים שאפשר לבקש: ${escapeHtml(swatchesText)}
-        <br><br>
-        <a href="${mailtoUrl}" style="display:inline-block;margin-top:4px;font-size:13px;color:#fff;background:${accent};padding:8px 14px;border-radius:16px;text-decoration:none;">לפתיחת המייל ולכתיבת המודעה &rarr;</a>
-      </div>
-    </details>`;
 }
 
 function btnStyle(accent, filled) {
@@ -444,16 +407,8 @@ function renderIssue({ list, entries = [], unsubscribeToken, useCid = false }) {
 <head>
 <meta charset="utf-8">
 <style>
-  /* ניסוי: פאנל שנפתח בלחיצה בלי שום JavaScript (checkbox hack) - ראה
-     renderExpandableBoxTest ב-templates.js. אם זה לא נתמך, ה-checkbox
-     פשוט לא יעשה כלום ויישאר מוסתר - שום דבר לא "נשבר". */
-  .cbhack-box { display: none; }
-  .cbhack-toggle:checked ~ .cbhack-box { display: block !important; }
-  /* ניסיון 2: אותו רעיון, אבל עם קישור <a> אמיתי במקום checkbox - טכניקת
-     :target. קישור ל-#... פשוט "קופץ" בתוך אותו עמוד לאלמנט עם ה-id הזה -
-     וניצלנו את זה כדי להראות/להסתיר תוכן, בלי JS ובלי form כלל. */
-  .target-box { display: none; }
-  .target-box:target { display: block !important; }
+  /* ניסיון 4: מבוסס :hover (לא לחיצה) - ראה renderHoverTest ב-templates.js */
+  .hover-test-wrap:hover .hover-test-box { display: block !important; }
 </style>
 </head>
 <body style="margin:0;padding:0;background:#f6f5f1;font-family:Arial,Helvetica,sans-serif;">
