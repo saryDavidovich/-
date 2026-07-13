@@ -92,6 +92,11 @@ function getIssueSizeInfo(list) {
   const attachmentsBytes = attachments.reduce((sum, a) => sum + Buffer.byteLength(a.content, 'base64'), 0);
 
   const totalBytes = htmlBytes + attachmentsBytes;
+  // חשוב: הבדיקה של Gmail (~102KB) היא רק על משקל קוד ה-HTML עצמו - טקסט,
+  // עיצוב, קישורים - ולא כוללת בכלל את משקל התמונות (שמצורפות כקובץ נפרד
+  // עם cid:, לא מוטמעות בתוך הטקסט). זו הסיבה שה-HTML שנשלח בפועל נשאר קטן
+  // גם עם תמונות. מגבלת ה-30MB של SendGrid לעומת זאת כן כוללת הכל (HTML +
+  // כל הקבצים המצורפים ביחד) - שני דברים שונים לגמרי, נבדקים בנפרד.
   const GMAIL_CLIP_LIMIT_KB = 102;
   const SENDGRID_LIMIT_KB = 30 * 1024;
 
@@ -102,8 +107,12 @@ function getIssueSizeInfo(list) {
     totalKB: Math.round(totalBytes / 1024),
     gmailLimitKB: GMAIL_CLIP_LIMIT_KB,
     sendgridLimitKB: SENDGRID_LIMIT_KB,
-    percentOfGmailLimit: Math.min(999, Math.round((totalBytes / 1024 / GMAIL_CLIP_LIMIT_KB) * 100)),
-    nearGmailLimit: totalBytes / 1024 > GMAIL_CLIP_LIMIT_KB * 0.75
+    // אחוז מהגבול של Gmail - לפי משקל ה-HTML בלבד (זה מה ש-Gmail בפועל בודק).
+    percentOfGmailLimit: Math.min(999, Math.round((htmlBytes / 1024 / GMAIL_CLIP_LIMIT_KB) * 100)),
+    nearGmailLimit: htmlBytes / 1024 > GMAIL_CLIP_LIMIT_KB * 0.75,
+    // אחוז מהגבול של SendGrid - לפי הגודל הכולל (HTML + תמונות ביחד).
+    percentOfSendgridLimit: Math.min(999, Math.round((totalBytes / 1024 / SENDGRID_LIMIT_KB) * 100)),
+    nearSendgridLimit: totalBytes / 1024 > SENDGRID_LIMIT_KB * 0.75
   };
 }
 

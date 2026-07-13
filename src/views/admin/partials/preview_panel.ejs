@@ -1,19 +1,36 @@
 <%
-  const barColor = size.nearGmailLimit ? '#c04828' : list.accent_color;
-  const barPct = Math.min(100, size.percentOfGmailLimit);
+  const gmailColor = size.nearGmailLimit ? '#c04828' : list.accent_color;
+  const gmailPct = Math.min(100, size.percentOfGmailLimit);
+  const sgColor = size.nearSendgridLimit ? '#c04828' : list.accent_color;
+  const sgPct = Math.min(100, size.percentOfSendgridLimit);
 %>
-<div class="pp-size" style="border-color:<%= barColor %>55;">
+<div class="pp-size" style="border-color:<%= gmailColor %>55;">
   <div class="pp-size-row">
-    <span>גודל הגיליון הבא: <strong><%= size.totalKB %>KB</strong></span>
+    <span>משקל קוד ה-HTML: <strong><%= size.htmlKB %>KB</strong></span>
     <span class="pp-size-limit">מתוך ~<%= size.gmailLimitKB %>KB (גבול חיתוך Gmail)</span>
   </div>
   <div class="pp-size-bar-track">
-    <div class="pp-size-bar-fill" style="width:<%= barPct %>%;background:<%= barColor %>;"></div>
+    <div class="pp-size-bar-fill" style="width:<%= gmailPct %>%;background:<%= gmailColor %>;"></div>
   </div>
   <% if (size.nearGmailLimit) { %>
-    <div class="pp-size-warning">קרוב לגבול - Gmail עלול לחתוך את ההודעה. שקול פחות תמונות/מודעות בגיליון הבא.</div>
+    <div class="pp-size-warning">קרוב לגבול - Gmail עלול לחתוך את ההודעה (הגבול הזה נוגע רק לטקסט/עיצוב, לא לתמונות). שקול פחות טקסט/מודעות בגיליון הבא.</div>
   <% } %>
-  <div class="pp-size-sub">HTML: <%= size.htmlKB %>KB · תמונות מצורפות: <%= size.imagesKB %>KB · <%= size.entriesCount %> פריטים</div>
+  <div class="pp-size-sub">
+    זה נמדד בלי משקל התמונות בכלל - Gmail בודק רק את משקל הטקסט/הקוד עצמו, התמונות מצורפות בנפרד.
+    בנייד (במיוחד אפליקציית Gmail ל-iOS) החיתוך יכול לקרות גם בהרבה פחות מ-102KB, אין מספר קבוע לכך.
+  </div>
+
+  <div class="pp-size-row" style="margin-top:10px;">
+    <span>סה"כ ההודעה (כולל תמונות): <strong><%= size.totalKB %>KB</strong></span>
+    <span class="pp-size-limit">מתוך <%= Math.round(size.sendgridLimitKB/1024) %>MB (גבול SendGrid)</span>
+  </div>
+  <div class="pp-size-bar-track">
+    <div class="pp-size-bar-fill" style="width:<%= sgPct %>%;background:<%= sgColor %>;"></div>
+  </div>
+  <% if (size.nearSendgridLimit) { %>
+    <div class="pp-size-warning">קרוב לגבול השליחה של SendGrid - מעבר לזה ההודעה תיכשל בשליחה. שקול פחות/קטנות יותר תמונות.</div>
+  <% } %>
+  <div class="pp-size-sub" style="margin-top:6px;">תמונות מצורפות: <%= size.imagesKB %>KB · <%= size.entriesCount %> פריטים</div>
 </div>
 
 <div class="pp-list" id="pp-list">

@@ -60,23 +60,34 @@ async function compileAndSendIssue(list) {
   const issueId = issueRow.lastInsertRowid;
 
   // שומרים עותק ארכיוני עם data URI (לא cid) - כי הארכיון נצפה בדפדפן,
-  // לא בתוכנת מייל, ואין שם "מצורפים" בכלל.
+  // לא בתוכנת מייל, ואין שם "מצורפים" בכלל. שימו לב: זה עותק הרבה יותר
+  // "כבד" מהמייל שבאמת נשלח (base64 מוטמע בתוך הטקסט עצמו), ולכן לא משמש
+  // למדידת הסיכון לחיתוך Gmail למטה - לזה יש בדיקה נפרדת על הגרסה האמיתית.
   const archiveHtml = renderIssue({ list, entries, unsubscribeToken: 'archive', useCid: false });
   db.prepare(`UPDATE issues SET html = ? WHERE id = ?`).run(archiveHtml, issueId);
-
-  // Gmail וספקים אחרים חותכים מייל שעובר בערך 102KB ("[Message clipped]") -
-  // ואז חלקים ממנו (כולל תמונות) פשוט לא מוצגים. מזהירים בלוג כדי שתדע
-  // לצמצם תמונות/תוכן בגיליון הבא אם זה קורה.
-  const sizeKB = Math.round(Buffer.byteLength(archiveHtml, 'utf8') / 1024);
-  if (sizeKB > 90) {
-    console.warn(`אזהרה: הגיליון של "${list.name}" גדול (${sizeKB}KB) - קרוב לגבול שבו Gmail חותך הודעות (~100KB). שקול פחות תמונות/מודעות בגיליון אחד.`);
-  } else {
-    console.log(`גודל הגיליון של "${list.name}": ${sizeKB}KB`);
-  }
 
   // המייל שבאמת יוצא ללקוחות: תמונות כ-cid מצורף, לא data URI - נתמך
   // בהרבה יותר תוכנות מייל (כולל Outlook).
   const attachments = collectImageAttachments(ads);
+
+  // Gmail חותך הודעה ("[Message clipped]") לפי משקל קוד ה-HTML בלבד (טקסט/
+  // עיצוב/קישורים) - התמונות (מצורפות בנפרד עם cid, לא מוטמעות בטקסט) לא
+  // נספרות בזה בכלל. בודקים את זה על הגרסה שבאמת נשלחת (cid), לא הארכיונית.
+  const sentHtmlSample = renderIssue({ list, entries, unsubscribeToken: 'size-check', useCid: true });
+  const htmlKB = Math.round(Buffer.byteLength(sentHtmlSample, 'utf8') / 1024);
+  if (htmlKB > 76) {
+    console.warn(`אזהרה: קוד ה-HTML של הגיליון "${list.name}" גדול (${htmlKB}KB) - קרוב לגבול שבו Gmail חותך הודעות (~102KB בדסקטופ, לפעמים פחות בנייד). שקול פחות טקסט/מודעות בגיליון אחד.`);
+  } else {
+    console.log(`משקל ה-HTML של הגיליון "${list.name}": ${htmlKB}KB (בלי תמונות - הן לא נספרות בגבול החיתוך של Gmail).`);
+  }
+
+  // מגבלת SendGrid (30MB, כולל כל הקבצים המצורפים) - זו בדיקה שונה לגמרי,
+  // ונדירה בהרבה שתיפגע בפועל, אבל אם היא נחצית השליחה תיכשל לגמרי.
+  const attachmentsKB = Math.round(attachments.reduce((sum, a) => sum + Buffer.byteLength(a.content, 'base64'), 0) / 1024);
+  const totalKB = htmlKB + attachmentsKB;
+  if (totalKB > 30 * 1024 * 0.75) {
+    console.warn(`אזהרה: הגיליון של "${list.name}" (${totalKB}KB עם התמונות) קרוב לגבול השליחה של SendGrid (30MB) - מעבר לזה השליחה תיכשל.`);
+  }
 
   let sentCount = 0;
   for (const sub of subscribers) {
