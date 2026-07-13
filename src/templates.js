@@ -79,21 +79,19 @@ function imageCid(itemId, index) {
   return `img-${itemId}-${index}`;
 }
 
-// גוף מייל מוכן-מראש לכל כפתור, כדי שגם מי שלא לוחץ על ריבוע ההסבר (למשל
-// כי תוכנת המייל שלו לא מריצה את ה-onclick למטה) עדיין יראה הסבר ברור
-// ברגע שהמייל נפתח לכתיבה, לפני ששולח.
+// גוף מייל מוכן-מראש (רק כשצריך - עכשיו כמעט תמיד ריק, ראה למטה) לכל
+// כפתור mailto.
 function mailto(action, slug, subjectText, bodyText = '') {
   const params = new URLSearchParams({ subject: subjectText });
   if (bodyText) params.set('body', bodyText);
   return `mailto:${action}+${slug}@${INBOUND_DOMAIN}?${params.toString().replace(/\+/g, '%20')}`;
 }
 
-// ריבוע הסבר קטן בצבע הרשימה, שמופיע מתחת לכפתור מיד עם הלחיצה עליו (רק
-// בדפדפן - בתוכנת מייל שחוסמת JS, ה-onclick פשוט מתעלם ולא שובר כלום; שם
-// ההסבר עדיין קיים בגוף המייל שנפתח, ראה mailto() למעלה).
-// טקסטי ההסבר המדויקים שהמערכת עצמה מזינה מראש לתוך גוף המיילים (mailto
-// body) - שמורים כאן במקום אחד כדי ש-inbound.js יוכל להסיר אותם אוטומטית
-// אם לקוח שולח בחזרה בלי למחוק אותם (ראה getKnownInstructionStrings למטה).
+// [היסטוריה] הטקסטים האלה שימשו בעבר למילוי מראש של גוף המייל - הוסרו
+// מהטיוטות עצמן (נשארות ריקות עכשיו, ראה renderHoverButton למטה שמציג את
+// ההסבר כריבוע ב-hover בתוך הגיליון במקום). נשארים כאן רק כדי ש-inbound.js
+// ימשיך לזהות ולנקות אותם אם הם עדיין מופיעים אצל לקוח שיש לו טיוטה ישנה
+// שנשמרה לפני העדכון הזה.
 const INSTR_ASK = 'כתבו כאן את השאלה שלכם ולחצו שליחה - היא תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
 const INSTR_FREE_AD = 'כתבו כאן את תוכן המודעה ולחצו שליחה - זו מודעת שורה פשוטה (טקסט בלבד), תיכנס לתור אישור ותתפרסם בגיליון הקרוב.';
 const INSTR_REPLY = 'כתבו כאן את התגובה שלכם ולחצו שליחה - היא תצורף לשאלה הזו בגיליון הבא, אחרי אישור.';
@@ -106,9 +104,12 @@ function colorNamesList(list) {
   } catch (e) { return []; }
 }
 
-// רשימת שמות הצבעים מוטמעת ישירות בטיוטת המייל (טקסט בלבד, לא ניתן להראות
-// עיגולי צבע אמיתיים בתוך תוכנת מייל חיצונית) - כך שהלקוח רואה בדיוק אילו
-// שמות אפשר לבקש, בלי צורך לחפש את זה במקום אחר.
+function colorPalette(list) {
+  try { return JSON.parse(list.ad_color_palette_json || '[]'); } catch (e) { return []; }
+}
+
+// [היסטוריה] כמו INSTR_* למעלה - נשארות רק לצורך ניקוי טיוטות ישנות
+// ב-inbound.js, לא מיוצרות יותר בפועל בכפתורים.
 function instrPlusAd(list) {
   const names = colorNamesList(list);
   const example = names[0] || 'כחול';
@@ -122,22 +123,41 @@ function instrPremiumAd(list) {
   return `כתבו כאן את תוכן המודעה, אפשר לצרף תמונה או גיף כקובץ מצורף למייל הזה. רוצים לבחור צבע רקע? הוסיפו שורה בנוסח "צבע: ${example}".${namesText} לחצו שליחה - המודעה תיכנס לתור אישור.`;
 }
 
-// כל טקסטי ההוראה שהמערכת עצמה מכניסה, עבור רשימה מסוימת - inbound.js
-// מסיר כל הופעה מדויקת שלהם מהתוכן שנשמר, כדי שלא "ידביקו" לתוך המודעה/
-// תשובה/נושא בפועל אם לקוח שולח בחזרה בלי למחוק את הטיוטה המקורית.
+// כל טקסטי ההוראה הישנים שהמערכת נהגה להזין - inbound.js מסיר כל הופעה
+// מדויקת שלהם מהתוכן שנשמר, כדי שלא "ידביקו" לתוך המודעה/תשובה/נושא אם
+// לקוח שולח בחזרה טיוטה ישנה שנשמרה אצלו לפני העדכון.
 function getKnownInstructionStrings(list) {
   return [INSTR_ASK, INSTR_FREE_AD, INSTR_REPLY, INSTR_CONTACT, instrPlusAd(list), instrPremiumAd(list)];
 }
 
-function clickHint(hintId, accent, text) {
-  return `
-    <div id="${hintId}" style="display:none;margin-top:10px;font-size:12px;line-height:1.7;color:${accent};background:${accent}12;border:1px solid ${accent}45;border-radius:10px;padding:10px 14px;text-align:right;">
-      <span style="margin-inline-end:4px;">💡</span>${escapeHtml(text)}
-    </div>`;
+// עיגולי צבע אמיתיים (לא רק שם) - בדיוק מה שהמנהל הגדיר בהגדרות הרשימה -
+// מוצגים בריבוע ה-hover של כפתורי מודגשת/פרימיום, כדי שהלקוח יראה ממש את
+// הגוון לפני שהוא כותב את השם בטיוטה.
+function renderColorSwatchesHtml(list) {
+  const palette = colorPalette(list);
+  if (!palette.length) return '';
+  const swatches = palette.map(c => `
+    <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;margin:3px 8px 3px 0;">
+      <span style="display:inline-block;width:14px;height:14px;border-radius:4px;background:${escapeHtml(c.hex)};border:1px solid rgba(0,0,0,0.15);vertical-align:middle;"></span>
+      ${escapeHtml(c.name)}
+    </span>`).join('');
+  return `<div style="margin-top:8px;"><strong>צבעים זמינים:</strong><br>${swatches}</div>`;
 }
 
-function showHintOnClick(hintId) {
-  return `var h=document.getElementById('${hintId}');if(h)h.style.display='block';`;
+// עוטפת כל כפתור mailto (שתמיד עבד ועדיין עובד בדיוק כמו קודם - הקישור
+// עצמו לא השתנה) בריבוע הסבר שמופיע ב-hover (מעבר עכבר) - נבדק בפועל
+// שזה עובד ב-Gmail, בניגוד לכל מנגנון מבוסס-לחיצה שניסינו (checkbox,
+// עוגן+:target, <details>) שנכשלו שם. אם hover לא נתמך אצל מישהו, הכפתור
+// הרגיל עדיין עובד רגיל - שום פונקציונליות לא אבודה.
+function renderHoverButton(accent, { label, buttonStyle, mailtoUrl, explanation, extraHtml = '' }) {
+  return `
+    <span class="hover-wrap" style="display:inline-block;position:relative;vertical-align:top;">
+      <a href="${mailtoUrl}" style="${buttonStyle}">${label}</a>
+      <span class="hover-box" style="display:none;position:absolute;top:100%;right:0;z-index:10;text-align:right;width:260px;border:1px solid ${accent}55;background:#fffdf8;box-shadow:0 4px 14px rgba(0,0,0,0.12);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.7;color:#2c2c2a;">
+        ${escapeHtml(explanation)}
+        ${extraHtml}
+      </span>
+    </span>`;
 }
 
 function wordLimitBadge(item) {
@@ -238,8 +258,7 @@ function renderTopic(item, accent) {
 function renderQA(question, answer, accent) {
   const qBody = formatBody(question.body_edited ?? question.body_raw);
   const aBody = answer ? formatBody(answer.body_edited ?? answer.body_raw) : '';
-  const replyUrl = mailto('reply', question.id, 'תגובה: ' + (question.subject || ''), INSTR_REPLY);
-  const hintId = `hint-reply-${question.id}`;
+  const replyUrl = mailto('reply', question.id, 'תגובה: ' + (question.subject || ''));
 
   const inner = `
     <div style="font-size:14px;color:${accent};font-weight:600;margin-bottom:4px;">שאלה</div>
@@ -249,8 +268,12 @@ function renderQA(question, answer, accent) {
     <div style="font-size:15px;line-height:1.6;color:#2c2c2a;">${aBody}</div>
     ` : ''}
     <div style="margin-top:10px;">
-      <a href="${replyUrl}" onclick="${showHintOnClick(hintId)}" style="font-size:13px;color:${accent};text-decoration:none;border:1px solid ${accent};padding:4px 10px;border-radius:14px;">להגיב לשאלה הזו במייל &larr;</a>
-      ${clickHint(hintId, accent, 'נפתחה עבורכם הודעת מייל מוכנה - כתבו את התגובה ולחצו שליחה.')}
+      ${renderHoverButton(accent, {
+        buttonStyle: `display:inline-block;font-size:13px;color:${accent};text-decoration:none;border:1px solid ${accent};padding:4px 10px;border-radius:14px;`,
+        label: 'להגיב לשאלה הזו במייל &larr;',
+        mailtoUrl: replyUrl,
+        explanation: 'כתבו את התגובה שלכם בגוף המייל שנפתח ולחצו שליחה - היא תצורף לשאלה הזו בגיליון הבא, אחרי אישור.'
+      })}
     </div>`;
 
   return cardWrapper(accent, inner);
@@ -260,51 +283,73 @@ function renderQA(question, answer, accent) {
 // השולח בפועל (from), בלי צורך בקישור אישי או טוקן.
 function renderTopButtons(list) {
   const accent = list.accent_color || '#1D9E75';
-  const joinUrl = mailto('join', list.slug, 'הצטרפות', 'לחיצה על "שליחה" מצרפת אתכם באופן אוטומטי לרשימה - אין צורך לכתוב שום דבר בגוף ההודעה.');
-  const leaveUrl = mailto('leave', list.slug, 'הסרה', 'לחיצה על "שליחה" מסירה אתכם באופן אוטומטי מהרשימה - אין צורך לכתוב שום דבר בגוף ההודעה.');
-  const joinHint = 'hint-join-' + list.id;
-  const leaveHint = 'hint-leave-' + list.id;
+  const joinUrl = mailto('join', list.slug, 'הצטרפות');
+  const leaveUrl = mailto('leave', list.slug, 'הסרה');
   return `
   <tr><td style="padding:14px 24px;text-align:center;background:#faf9f6;">
-    <a href="${joinUrl}" onclick="${showHintOnClick(joinHint)}" style="display:inline-block;font-size:13px;color:#fff;background:#1D9E75;text-decoration:none;padding:8px 16px;border-radius:16px;margin:3px;font-weight:600;">הצטרפות לרשימה</a>
-    <a href="${leaveUrl}" onclick="${showHintOnClick(leaveHint)}" style="display:inline-block;font-size:13px;color:#c04828;background:transparent;border:1px solid #c04828;text-decoration:none;padding:7px 16px;border-radius:16px;margin:3px;font-weight:600;">הסרה מהרשימה</a>
-    ${clickHint(joinHint, accent, 'נפתחה הודעת מייל מוכנה - לחיצה על שליחה מצרפת אתכם אוטומטית, בלי לכתוב כלום.')}
-    ${clickHint(leaveHint, accent, 'נפתחה הודעת מייל מוכנה - לחיצה על שליחה מסירה אתכם אוטומטית, בלי לכתוב כלום.')}
+    ${renderHoverButton(accent, {
+      buttonStyle: 'display:inline-block;font-size:13px;color:#fff;background:#1D9E75;text-decoration:none;padding:8px 16px;border-radius:16px;margin:3px;font-weight:600;',
+      label: 'הצטרפות לרשימה',
+      mailtoUrl: joinUrl,
+      explanation: 'לחיצה על "שליחה" מצרפת אתכם באופן אוטומטי לרשימה - אין צורך לכתוב שום דבר בגוף ההודעה.'
+    })}
+    ${renderHoverButton(accent, {
+      buttonStyle: 'display:inline-block;font-size:13px;color:#c04828;background:transparent;border:1px solid #c04828;text-decoration:none;padding:7px 16px;border-radius:16px;margin:3px;font-weight:600;',
+      label: 'הסרה מהרשימה',
+      mailtoUrl: leaveUrl,
+      explanation: 'לחיצה על "שליחה" מסירה אתכם באופן אוטומטי מהרשימה - אין צורך לכתוב שום דבר בגוף ההודעה.'
+    })}
   </td></tr>`;
 }
 
 // שורת כפתורים: שליחת שאלה + פרסום מודעה (כל רמה עם מתג הצגה נפרד) +
-// יצירת קשר - כל הכפתורים פותחים mailto מוכן מראש.
+// יצירת קשר - כל הכפתורים פותחים mailto עם גוף ריק (חוץ ממודגשת/פרימיום,
+// ששם כבר כתוב "צבע: " מוכן למילוי) והסבר מופיע ב-hover, לא בגוף המייל.
 function renderActionButtons(list, accent) {
   const buttons = [];
-  const hints = [];
 
   if (list.show_ask_button) {
-    const hintId = 'hint-ask-' + list.id;
-    buttons.push(`<a href="${mailto('ask', list.slug, 'שאלה חדשה', INSTR_ASK)}" onclick="${showHintOnClick(hintId)}" style="${btnStyle(accent, true)}">לשליחת שאלה חדשה</a>`);
-    hints.push(clickHint(hintId, accent, 'נפתחה הודעת מייל מוכנה - כתבו את השאלה שלכם ולחצו שליחה.'));
+    buttons.push(renderHoverButton(accent, {
+      buttonStyle: btnStyle(accent, true),
+      label: 'לשליחת שאלה חדשה',
+      mailtoUrl: mailto('ask', list.slug, 'שאלה חדשה'),
+      explanation: 'כתבו את השאלה שלכם בגוף המייל שנפתח ולחצו שליחה - היא תיכנס לתור אישור ותתפרסם בגיליון הקרוב.'
+    }));
   }
 
   if (list.show_ads_free) {
-    const hintFree = 'hint-ads-' + list.id;
-    buttons.push(`<a href="${mailto('ads', list.slug, 'מודעת שורה', INSTR_FREE_AD)}" onclick="${showHintOnClick(hintFree)}" style="${btnStyle(accent, false)}">פרסום מודעת שורה (חינם)</a>`);
-    hints.push(clickHint(hintFree, accent, 'נפתחה הודעת מייל מוכנה - מודעת שורה פשוטה, טקסט בלבד. כתבו את התוכן ולחצו שליחה.'));
+    buttons.push(renderHoverButton(accent, {
+      buttonStyle: btnStyle(accent, false),
+      label: 'פרסום מודעת שורה (חינם)',
+      mailtoUrl: mailto('ads', list.slug, 'מודעת שורה'),
+      explanation: 'זו מודעת שורה פשוטה (טקסט בלבד). כתבו את התוכן בגוף המייל שנפתח ולחצו שליחה - היא תיכנס לתור אישור.'
+    }));
   }
   if (list.show_ads_plus) {
-    const hintPlus = 'hint-adsplus-' + list.id;
-    buttons.push(`<a href="${mailto('adsplus', list.slug, 'מודעה מודגשת', instrPlusAd(list))}" onclick="${showHintOnClick(hintPlus)}" style="${btnStyle(accent, false)}">פרסום מודעה מודגשת</a>`);
-    hints.push(clickHint(hintPlus, accent, 'נפתחה הודעת מייל מוכנה - כתבו את התוכן. רשימת הצבעים הזמינים כתובה בטיוטה עצמה.'));
-    buttons.push(renderHoverTest(list, accent));
+    buttons.push(renderHoverButton(accent, {
+      buttonStyle: btnStyle(accent, false),
+      label: 'פרסום מודעה מודגשת',
+      mailtoUrl: mailto('adsplus', list.slug, 'מודעה מודגשת', 'צבע: '),
+      explanation: 'המודעה תפורסם בתוך מסגרת צבעונית בולטת. במייל שנפתח כבר מוכנה שורת "צבע:" - כתבו שם את שם הצבע הרצוי, ומתחת את תוכן המודעה.',
+      extraHtml: renderColorSwatchesHtml(list)
+    }));
   }
   if (list.show_ads_premium) {
-    const hintPremium = 'hint-adspremium-' + list.id;
-    buttons.push(`<a href="${mailto('adspremium', list.slug, 'מודעה פרימיום', instrPremiumAd(list))}" onclick="${showHintOnClick(hintPremium)}" style="${btnStyle(accent, false)}">פרסום מודעה פרימיום</a>`);
-    hints.push(clickHint(hintPremium, accent, 'נפתחה הודעת מייל מוכנה - אפשר לצרף תמונה. רשימת הצבעים הזמינים כתובה בטיוטה עצמה.'));
+    buttons.push(renderHoverButton(accent, {
+      buttonStyle: btnStyle(accent, false),
+      label: 'פרסום מודעה פרימיום',
+      mailtoUrl: mailto('adspremium', list.slug, 'מודעה פרימיום', 'צבע: '),
+      explanation: 'אפשר לצרף תמונה או גיף כקובץ מצורף למייל. במייל שנפתח כבר מוכנה שורת "צבע:" - כתבו שם את שם הצבע הרצוי, ומתחת את תוכן המודעה.',
+      extraHtml: renderColorSwatchesHtml(list)
+    }));
   }
 
-  const hintContact = 'hint-contact-' + list.id;
-  buttons.push(`<a href="${mailto('contact', list.slug, 'פנייה למנהל הרשימה', INSTR_CONTACT)}" onclick="${showHintOnClick(hintContact)}" style="${btnStyle(accent, false)}">צור קשר</a>`);
-  hints.push(clickHint(hintContact, accent, 'נפתחה הודעת מייל מוכנה - זו פנייה פרטית למנהל, לא מתפרסמת בגיליון.'));
+  buttons.push(renderHoverButton(accent, {
+    buttonStyle: btnStyle(accent, false),
+    label: 'צור קשר',
+    mailtoUrl: mailto('contact', list.slug, 'פנייה למנהל הרשימה'),
+    explanation: 'זו פנייה פרטית למנהל הרשימה - לא מתפרסמת בגיליון.'
+  }));
 
   if (buttons.length === 0) return '';
 
@@ -313,38 +358,12 @@ function renderActionButtons(list, accent) {
     <div>
       ${buttons.join('')}
     </div>
-    ${hints.join('')}
   </td></tr>`;
 }
 
-// [שלושה ניסיונות הוסרו: checkbox hack, קישור עוגן + :target, ו-<details>]
-// כל השלושה נבדקו בפועל בג'ימייל אמיתי ונכשלו, כל אחד בצורה אחרת - checkbox
-// קפא לגמרי, קישור העוגן הוצג אך לא הגיב ללחיצה, ו-<details> לא נסגר בכלל
-// (הוצג פתוח תמיד, עם עיצוב חלקי). המסקנה: Gmail חוסם כל מנגנון
-// אינטראקטיביות מבוסס HTML/CSS גרידא בתוך מייל שהתקבל, ללא יוצא מן הכלל -
-// הדרך היחידה הידועה לאינטראקטיביות אמיתית בג'ימייל היא AMP for Email
-// (דורשת רישום ואישור מראש מול גוגל, לא רק שינוי קוד).
-
-// ניסיון 4: מבוסס :hover במקום לחיצה - יש תיעוד ספציפי ש-Gmail (גם
-// בדפדפן וגם באפליקציית אנדרואיד) תומך ב-:hover, בניגוד ל-checkbox/target/
-// details. החיסרון: זה מעבר עכבר, לא לחיצה - בטלפון (מסך מגע) ההתנהגות
-// לא עקבית בין מכשירים, חלקם מדמים hover בהקשה ראשונה וחלקם לא בכלל.
-function renderHoverTest(list, accent) {
-  const names = colorNamesList(list);
-  const swatchesText = names.length ? names.join(', ') : '(לא הוגדרו צבעים)';
-  const mailtoUrl = mailto('adsplus', list.slug, 'מודעה מודגשת', instrPlusAd(list));
-
-  return `
-    <span class="hover-test-wrap" style="display:inline-block;position:relative;margin:3px;vertical-align:top;">
-      <span style="display:inline-block;font-size:13px;color:#fff;background:${accent};padding:8px 14px;border-radius:16px;">🖱️ מודעה מודגשת - העבירו עכבר לפרטים (ניסיון 4)</span>
-      <span class="hover-test-box" style="display:none;position:absolute;top:100%;right:0;z-index:10;text-align:right;width:260px;border:1px solid ${accent}55;background:#fffdf8;box-shadow:0 4px 14px rgba(0,0,0,0.12);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.7;color:#2c2c2a;">
-        <strong>מודעה מודגשת</strong> - המודעה תפורסם בתוך מסגרת צבעונית בולטת בגיליון.<br><br>
-        צבעים שאפשר לבקש: ${escapeHtml(swatchesText)}
-        <br><br>
-        <a href="${mailtoUrl}" style="display:inline-block;margin-top:4px;font-size:13px;color:#fff;background:${accent};padding:8px 14px;border-radius:16px;text-decoration:none;">לפתיחת המייל ולכתיבת המודעה &rarr;</a>
-      </span>
-    </span>`;
-}
+// [ניסויי אינטראקטיביות קודמים הוסרו: checkbox hack, קישור עוגן + :target,
+// ו-<details> - כולם נכשלו בבדיקה בג'ימייל אמיתי. הניסיון שכן עבד - מבוסס
+// :hover - הוטמע בפועל בכל הכפתורים דרך renderHoverButton למעלה.]
 
 function btnStyle(accent, filled) {
   return filled
@@ -364,9 +383,9 @@ function renderOtherListsPromo(list) {
   const otherLists = db.prepare('SELECT * FROM lists WHERE active = 1 AND id != ? ORDER BY name ASC').all(list.id);
   if (otherLists.length === 0) return '';
 
-  const joinAllUrl = mailto('joinall', 'all', 'הצטרפות לכל הרשימות', 'לחיצה על "שליחה" מצרפת אתכם אוטומטית לכל הרשימות הפעילות - אין צורך לכתוב שום דבר בגוף ההודעה.');
+  const joinAllUrl = mailto('joinall', 'all', 'הצטרפות לכל הרשימות');
   const buttons = otherLists.map(l => {
-    const url = mailto('join', l.slug, 'הצטרפות', `לחיצה על "שליחה" מצרפת אתכם באופן אוטומטי לרשימת "${l.name}" - אין צורך לכתוב שום דבר בגוף ההודעה.`);
+    const url = mailto('join', l.slug, 'הצטרפות');
     return `<a href="${url}" style="display:inline-block;font-size:12px;color:${l.accent_color || '#1D9E75'};background:transparent;border:1px solid ${l.accent_color || '#1D9E75'};text-decoration:none;padding:5px 12px;border-radius:14px;margin:3px;">${escapeHtml(l.name)}</a>`;
   }).join('');
 
@@ -407,8 +426,9 @@ function renderIssue({ list, entries = [], unsubscribeToken, useCid = false }) {
 <head>
 <meta charset="utf-8">
 <style>
-  /* ניסיון 4: מבוסס :hover (לא לחיצה) - ראה renderHoverTest ב-templates.js */
-  .hover-test-wrap:hover .hover-test-box { display: block !important; }
+  /* ריבוע הסבר שמופיע ב-hover (מעבר עכבר) ליד כל כפתור - נבדק בפועל
+     שזה עובד ב-Gmail. הכפתור עצמו (ה-<a>) עובד תמיד בלי תלות בזה. */
+  .hover-wrap:hover .hover-box { display: block !important; }
 </style>
 </head>
 <body style="margin:0;padding:0;background:#f6f5f1;font-family:Arial,Helvetica,sans-serif;">
