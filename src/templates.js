@@ -150,10 +150,16 @@ function renderColorSwatchesHtml(list) {
 // עוגן+:target, <details>) שנכשלו שם. אם hover לא נתמך אצל מישהו, הכפתור
 // הרגיל עדיין עובד רגיל - שום פונקציונליות לא אבודה.
 function renderHoverButton(accent, { label, buttonStyle, mailtoUrl, explanation, extraHtml = '' }) {
+  // הריבוע עבר מ-position:absolute (ממוקם ביחס לכפתור, בתוך זרימת הטבלה)
+  // ל-position:fixed (ממוקם ביחס למסך כולו, במרכזו) - כדי שהופעתו/היעלמותו
+  // לא תזיז שום דבר בגיליון עצמו, בכל מקרה, בלי תלות בכפתור הספציפי שעליו
+  // עוברים עם העכבר. יש גם backdrop כהה קל שמכהה את הגיליון מאחורי הריבוע,
+  // כדי שזה יראה כמו חלון שנפתח מעל הגיליון ולא כחלק ממנו.
   return `
-    <span class="hover-wrap" style="display:inline-block;position:relative;vertical-align:top;">
+    <span class="hover-wrap" style="display:inline-block;vertical-align:top;">
       <a href="${mailtoUrl}" style="${buttonStyle}">${label}</a>
-      <span class="hover-box" style="display:none;position:absolute;top:100%;right:0;z-index:10;text-align:right;width:260px;border:1px solid ${accent}55;background:#fffdf8;box-shadow:0 4px 14px rgba(0,0,0,0.12);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.7;color:#2c2c2a;">
+      <span class="hover-backdrop" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(20,18,15,0.45);z-index:9998;"></span>
+      <span class="hover-box" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;text-align:right;width:280px;max-width:82vw;border:1px solid ${accent}55;background:#fffdf8;box-shadow:0 10px 34px rgba(0,0,0,0.28);border-radius:12px;padding:16px 18px;font-size:13px;line-height:1.7;color:#2c2c2a;">
         ${escapeHtml(explanation)}
         ${extraHtml}
       </span>
@@ -426,9 +432,13 @@ function renderIssue({ list, entries = [], unsubscribeToken, useCid = false }) {
 <head>
 <meta charset="utf-8">
 <style>
-  /* ריבוע הסבר שמופיע ב-hover (מעבר עכבר) ליד כל כפתור - נבדק בפועל
-     שזה עובד ב-Gmail. הכפתור עצמו (ה-<a>) עובד תמיד בלי תלות בזה. */
-  .hover-wrap:hover .hover-box { display: block !important; }
+  /* ריבוע הסבר שמופיע ב-hover (מעבר עכבר) על כל כפתור - נבדק בפועל
+     שזה עובד ב-Gmail. הכפתור עצמו (ה-<a>) עובד תמיד בלי תלות בזה.
+     הריבוע וה-backdrop הם position:fixed (ממורכזים על המסך), ולכן
+     הופעתם לא משנה שום דבר בזרימה/במידות של הגיליון עצמו - אין תזוזה
+     של כפתורים אחרים כשעוברים עם העכבר. */
+  .hover-wrap:hover .hover-box,
+  .hover-wrap:hover .hover-backdrop { display: block !important; }
 </style>
 </head>
 <body style="margin:0;padding:0;background:#f6f5f1;font-family:Arial,Helvetica,sans-serif;">
