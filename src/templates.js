@@ -145,21 +145,26 @@ function renderColorSwatchesHtml(list) {
 }
 
 // עוטפת כל כפתור mailto (שתמיד עבד ועדיין עובד בדיוק כמו קודם - הקישור
-// עצמו לא השתנה) בריבוע הסבר שמופיע ב-hover (מעבר עכבר) - נבדק בפועל
-// שזה עובד ב-Gmail, בניגוד לכל מנגנון מבוסס-לחיצה שניסינו (checkbox,
-// עוגן+:target, <details>) שנכשלו שם. אם hover לא נתמך אצל מישהו, הכפתור
-// הרגיל עדיין עובד רגיל - שום פונקציונליות לא אבודה.
-function renderHoverButton(accent, { label, buttonStyle, mailtoUrl, explanation, extraHtml = '' }) {
-  // הריבוע עבר מ-position:absolute (ממוקם ביחס לכפתור, בתוך זרימת הטבלה)
-  // ל-position:fixed (ממוקם ביחס למסך כולו, במרכזו) - כדי שהופעתו/היעלמותו
-  // לא תזיז שום דבר בגיליון עצמו, בכל מקרה, בלי תלות בכפתור הספציפי שעליו
-  // עוברים עם העכבר. יש גם backdrop כהה קל שמכהה את הגיליון מאחורי הריבוע,
-  // כדי שזה יראה כמו חלון שנפתח מעל הגיליון ולא כחלק ממנו.
+// עצמו לא השתנה) בריבוע הסבר שמופיע ב-hover (מעבר עכבר).
+//
+// חשוב - מסקנה מבדיקה בפועל: Gmail מוחק לחלוטין כל מאפיין CSS מסוג
+// position (absolute/relative/fixed, top/left/right/bottom, z-index) מכל
+// מייל שמתקבל, גם מתוך <style> וגם inline. זו הסיבה שהגרסה הקודמת
+// (position:fixed, שעבדה מצוין בדף האתר הרגיל) לא עבדה בכלל בתוך המייל
+// עצמו - הדפדפן/Gmail פשוט מתעלמים מה-position ומחזירים את הריבוע לזרימה
+// הרגילה של הטבלה, מה שגורם בדיוק לתזוזה שרצינו למנוע.
+//
+// הפתרון היחיד שבאמת מבטיח אפס תזוזה בתוך Gmail: לא להשתמש ב-position
+// בכלל. הריבוע תופס תמיד את אותו שטח קבוע (height קבוע + overflow:hidden),
+// גם כשהוא "סגור" - רק ה-opacity שלו משתנה בין 0 (בלתי נראה) ל-1 (נראה).
+// כיוון שהשטח שמור מראש כל הזמן, שום דבר סביבו לא יכול לזוז - לא בכפתור
+// עצמו ולא בכפתורים ליד. (opacity, בניגוד ל-display, לא מוחק את השטח
+// שהאלמנט תופס - זה מאושר גם ב-Gmail.)
+function renderHoverButton(accent, { label, buttonStyle, mailtoUrl, explanation, extraHtml = '', panelHeight = 92 }) {
   return `
-    <span class="hover-wrap" style="display:inline-block;vertical-align:top;">
+    <span class="hover-wrap" style="display:inline-block;vertical-align:top;text-align:center;margin:3px;">
       <a href="${mailtoUrl}" style="${buttonStyle}">${label}</a>
-      <span class="hover-backdrop" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(20,18,15,0.45);z-index:9998;"></span>
-      <span class="hover-box" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;text-align:right;width:280px;max-width:82vw;border:1px solid ${accent}55;background:#fffdf8;box-shadow:0 10px 34px rgba(0,0,0,0.28);border-radius:12px;padding:16px 18px;font-size:13px;line-height:1.7;color:#2c2c2a;">
+      <span class="hover-box" style="display:block;opacity:0;height:${panelHeight}px;width:220px;overflow:hidden;margin:4px auto 0 auto;text-align:right;border:1px solid ${accent}55;background:#fffdf8;border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.55;color:#2c2c2a;box-sizing:border-box;">
         ${escapeHtml(explanation)}
         ${extraHtml}
       </span>
@@ -337,7 +342,8 @@ function renderActionButtons(list, accent) {
       label: 'פרסום מודעה מודגשת',
       mailtoUrl: mailto('adsplus', list.slug, 'מודעה מודגשת', 'צבע: '),
       explanation: 'המודעה תפורסם בתוך מסגרת צבעונית בולטת. במייל שנפתח כבר מוכנה שורת "צבע:" - כתבו שם את שם הצבע הרצוי, ומתחת את תוכן המודעה.',
-      extraHtml: renderColorSwatchesHtml(list)
+      extraHtml: renderColorSwatchesHtml(list),
+      panelHeight: 190
     }));
   }
   if (list.show_ads_premium) {
@@ -346,7 +352,8 @@ function renderActionButtons(list, accent) {
       label: 'פרסום מודעה פרימיום',
       mailtoUrl: mailto('adspremium', list.slug, 'מודעה פרימיום', 'צבע: '),
       explanation: 'אפשר לצרף תמונה או גיף כקובץ מצורף למייל. במייל שנפתח כבר מוכנה שורת "צבע:" - כתבו שם את שם הצבע הרצוי, ומתחת את תוכן המודעה.',
-      extraHtml: renderColorSwatchesHtml(list)
+      extraHtml: renderColorSwatchesHtml(list),
+      panelHeight: 190
     }));
   }
 
@@ -432,13 +439,13 @@ function renderIssue({ list, entries = [], unsubscribeToken, useCid = false }) {
 <head>
 <meta charset="utf-8">
 <style>
-  /* ריבוע הסבר שמופיע ב-hover (מעבר עכבר) על כל כפתור - נבדק בפועל
-     שזה עובד ב-Gmail. הכפתור עצמו (ה-<a>) עובד תמיד בלי תלות בזה.
-     הריבוע וה-backdrop הם position:fixed (ממורכזים על המסך), ולכן
-     הופעתם לא משנה שום דבר בזרימה/במידות של הגיליון עצמו - אין תזוזה
-     של כפתורים אחרים כשעוברים עם העכבר. */
-  .hover-wrap:hover .hover-box,
-  .hover-wrap:hover .hover-backdrop { display: block !important; }
+  /* ריבוע הסבר שמופיע ב-hover (מעבר עכבר) מתחת לכל כפתור. Gmail מוחק כל
+     מאפיין position (absolute/relative/fixed) מהמייל, ולכן הריבוע *לא*
+     ממוקם - הוא תופס מראש שטח קבוע (height קבוע, ראה renderHoverButton
+     ב-templates.js) וכל מה שקורה ב-hover הוא רק שינוי ה-opacity שלו,
+     בלי לשנות את מידותיו בכלל. בגלל זה שום כפתור אחר לא זז - השטח כבר
+     שמור מראש בכל מצב, לפני ואחרי ה-hover. */
+  .hover-wrap:hover .hover-box { opacity: 1 !important; }
 </style>
 </head>
 <body style="margin:0;padding:0;background:#f6f5f1;font-family:Arial,Helvetica,sans-serif;">
