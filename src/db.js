@@ -33,6 +33,13 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
 db.exec(`
+-- הגדרות גלובליות שניתנות לעריכה מהממשק בלי redeploy (למשל פרטי חיבור
+-- נדרים פלוס) - key-value פשוט, במקום טבלה עם עמודה קבועה לכל הגדרה.
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+
 CREATE TABLE IF NOT EXISTS lists (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   slug TEXT UNIQUE NOT NULL,

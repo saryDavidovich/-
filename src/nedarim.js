@@ -10,9 +10,17 @@
 // לא סומכים על תגובת האייפרם בצד הלקוח (TransactionResponse) לבדה.
 
 const fetch = require('node-fetch');
+const { getSetting } = require('./appSettings');
 
-const NEDARIM_MOSAD = process.env.NEDARIM_MOSAD || '';
-const NEDARIM_API_VALID = process.env.NEDARIM_API_VALID || '';
+// שני מקורות אפשריים להגדרות: טבלת app_settings (ניתנת לעריכה מהממשק,
+// ראה admin.js /payment-settings) עדיפה, ומשתני סביבה כברירת מחדל/גיבוי
+// (שימושי בעיקר לפריסה ראשונית, לפני שנכנסים לממשק בכלל).
+function getMosad() {
+  return getSetting('nedarim_mosad', process.env.NEDARIM_MOSAD || '');
+}
+function getApiValid() {
+  return getSetting('nedarim_api_valid', process.env.NEDARIM_API_VALID || '');
+}
 
 // כתובות ה-IP שמהן נדרים פלוס שולחים CallBack - ראה "אייפרם: אימות תשלום
 // ואבטחה" בתיעוד. כל בקשה שלא מגיעה מאחת מהכתובות האלה נדחית.
@@ -26,7 +34,7 @@ const NEDARIM_CALLBACK_IPS = [
 const CREATE_TRANSACTION_URL = 'https://matara.pro/nedarimplus/V6/Files/WebServices/DebitIframe.aspx?Action=CreateTransaction';
 
 function isConfigured() {
-  return Boolean(NEDARIM_MOSAD && NEDARIM_API_VALID);
+  return Boolean(getMosad() && getApiValid());
 }
 
 // יוצרת עסקה מוכנה מראש בצד השרת מול נדרים פלוס. הדף שלנו ישלח לאייפרם
@@ -34,12 +42,12 @@ function isConfigured() {
 // callbackUrl חייב להיות כתובת ציבורית מלאה (https) שמגיעה חזרה לשרת שלנו.
 async function createServerTransaction({ amount, paymentToken, comment, callbackUrl }) {
   if (!isConfigured()) {
-    return { ok: false, error: 'נדרים פלוס לא מוגדר (חסרים NEDARIM_MOSAD / NEDARIM_API_VALID ב-.env)' };
+    return { ok: false, error: 'נדרים פלוס לא מוגדר (השלימו מספר מוסד וטקסט אימות בהגדרות התשלום בפאנל הניהול)' };
   }
 
   const params = new URLSearchParams({
-    Mosad: NEDARIM_MOSAD,
-    ApiValid: NEDARIM_API_VALID,
+    Mosad: getMosad(),
+    ApiValid: getApiValid(),
     PaymentType: 'Ragil',
     Amount: String(amount),
     Currency: '1',
@@ -75,4 +83,4 @@ function isFromNedarim(req) {
   return NEDARIM_CALLBACK_IPS.includes(ip);
 }
 
-module.exports = { isConfigured, createServerTransaction, isFromNedarim, NEDARIM_CALLBACK_IPS };
+module.exports = { isConfigured, createServerTransaction, isFromNedarim, getMosad, NEDARIM_CALLBACK_IPS };

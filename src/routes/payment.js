@@ -54,7 +54,7 @@ router.post('/payment/:token/start', express.json(), async (req, res) => {
   }
 
   db.prepare('UPDATE items SET nedarim_transaction_id = ? WHERE id = ?').run(String(result.transactionId), item.id);
-  res.json({ ok: true, transactionId: result.transactionId, mosad: process.env.NEDARIM_MOSAD });
+  res.json({ ok: true, transactionId: result.transactionId, mosad: nedarim.getMosad() });
 });
 
 // כתובת ה-CallBack שנדרים פלוס שולחים אליה POST כ-application/json בסיום

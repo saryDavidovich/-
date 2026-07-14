@@ -5,10 +5,10 @@ const fs = require('fs');
 const multer = require('multer');
 const db = require('../db');
 
-// דגל תכונה: כשתהיה מוכן להפעיל תשלום על תמונות/גיפים/קישורים,
-// תשנה את זה ל-true בקובץ ה-.env (PAID_FEATURES_ENABLED=true) -
-// אין צורך לגעת בקוד בכלל.
-const PAID_FEATURES_ENABLED = process.env.PAID_FEATURES_ENABLED === 'true';
+// דגל תכונה: ניתן להפעיל דרך משתנה סביבה (PAID_FEATURES_ENABLED=true)
+// או, בלי redeploy, דרך המתג בהגדרות התשלום בפאנל הניהול (ראה
+// admin.js /payment-settings + paymentUtil.js).
+const { requiresPayment, priceFor, generatePaymentToken, paidFeaturesEnabled } = require('../paymentUtil');
 const FREE_WORD_LIMIT = parseInt(process.env.FREE_WORD_LIMIT || '40', 10);
 
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
@@ -30,12 +30,11 @@ function validTier(t) {
   return ['free', 'plus', 'premium'].includes(t) ? t : 'free';
 }
 
-const { requiresPayment, priceFor, generatePaymentToken } = require('../paymentUtil');
-
 // -------- פרסום מודעה --------
 router.get('/ads/:slug', (req, res) => {
   const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
   if (!list) return res.status(404).send('רשימה לא נמצאה');
+  const PAID_FEATURES_ENABLED = paidFeaturesEnabled();
   const requestedTier = validTier(req.query.tier);
   res.render('ads/submit', {
     list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT,
@@ -47,6 +46,7 @@ router.get('/ads/:slug', (req, res) => {
 router.post('/ads/:slug', upload.single('image'), async (req, res) => {
   const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
   if (!list) return res.status(404).send('רשימה לא נמצאה');
+  const PAID_FEATURES_ENABLED = paidFeaturesEnabled();
 
   const { email, subject, body, bg_color, text_color } = req.body;
   const tier = validTier(req.body.paid_tier);
@@ -91,6 +91,24 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
     );
 
     if (needsPayment) {
+      try {
+        const { sendViaSendGrid } = require('../compiler');
+        const paymentUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/payment/${paymentToken}`;
+        const tierName = tier === 'premium' ? 'פרימיום' : 'מודגשת';
+        await sendViaSendGrid(
+          email,
+          `נותר שלב אחד - תשלום עבור המודעה ב"${list.name}"`,
+          `<div dir="rtl" style="font-family:Arial,sans-serif;">
+            <p>המודעה שלך (${tierName}, ${paymentAmount} ש"ח) התקבלה וממתינה לתשלום.</p>
+            <p>לחץ כאן כדי להשלים את התשלום ולשלוח את המודעה לתור האישור:</p>
+            <p><a href="${paymentUrl}">${paymentUrl}</a></p>
+          </div>`
+        );
+      } catch (mailErr) {
+        // לא עוצרים את התהליך אם שליחת המייל נכשלה - הלקוח כבר עומד לעבור
+        // לדף התשלום בעצמו, המייל הוא רק גיבוי/תזכורת.
+        console.error('שגיאה בשליחת מייל קישור תשלום:', mailErr);
+      }
       return res.redirect(`/payment/${paymentToken}`);
     }
 

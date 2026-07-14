@@ -6,6 +6,9 @@ const multer = require('multer');
 const db = require('../db');
 const { renderIssue } = require('../templates');
 const { getOrderedApprovedEntries, nextManualOrder, saveManualOrder, getIssueSizeInfo, describeEntry } = require('../issueBuilder');
+const nedarim = require('../nedarim');
+const { getSetting, setSetting } = require('../appSettings');
+const { paidFeaturesEnabled } = require('../paymentUtil');
 
 function requireAuth(req, res, next) {
   if (req.session && req.session.isAdmin) return next();
@@ -73,6 +76,28 @@ router.get('/contact', requireAuth, (req, res) => {
 router.post('/contact/:id/delete', requireAuth, (req, res) => {
   db.prepare('DELETE FROM contact_messages WHERE id = ?').run(req.params.id);
   res.redirect('/admin/contact');
+});
+
+// -------- ניהול קופה - חיבור נדרים פלוס (גלובלי, משותף לכל הרשימות;
+// המחיר עצמו נקבע בנפרד לכל רשימה בהגדרות שלה) --------
+router.get('/payment-settings', requireAuth, (req, res) => {
+  res.render('admin/payment_settings', {
+    allLists: getAllLists(),
+    mosad: getSetting('nedarim_mosad', process.env.NEDARIM_MOSAD || ''),
+    apiValid: getSetting('nedarim_api_valid', process.env.NEDARIM_API_VALID || ''),
+    enabled: paidFeaturesEnabled(),
+    envEnabled: process.env.PAID_FEATURES_ENABLED === 'true',
+    configured: nedarim.isConfigured(),
+    baseUrl: process.env.BASE_URL || 'http://localhost:3000',
+    saved: req.query.saved === '1'
+  });
+});
+
+router.post('/payment-settings', requireAuth, express.urlencoded({ extended: true }), (req, res) => {
+  setSetting('nedarim_mosad', (req.body.nedarim_mosad || '').trim());
+  setSetting('nedarim_api_valid', (req.body.nedarim_api_valid || '').trim());
+  setSetting('paid_features_enabled', req.body.enabled ? '1' : '0');
+  res.redirect('/admin/payment-settings?saved=1');
 });
 
 // -------- הורדת אקסל של כל המנויים במערכת - מאוחד, כל מייל פעם אחת, עם

@@ -1,7 +1,13 @@
 const { v4: uuidv4 } = require('uuid');
+const { getSetting } = require('./appSettings');
 const nedarim = require('./nedarim');
 
-const PAID_FEATURES_ENABLED = process.env.PAID_FEATURES_ENABLED === 'true';
+// שני מקורות אפשריים להפעלה: משתנה הסביבה (ברירת מחדל/גיבוי, כמו שהיה עד
+// עכשיו) או המתג בהגדרות התשלום בפאנל הניהול (ניתן לשינוי בלי redeploy).
+// כל אחד מהם לבד מספיק כדי להפעיל.
+function paidFeaturesEnabled() {
+  return process.env.PAID_FEATURES_ENABLED === 'true' || getSetting('paid_features_enabled', '') === '1';
+}
 
 // מחזירה את המחיר (בשקלים) שהוגדר לרשימה הזו לרמה הנתונה, או 0 אם אין
 // מחיר/הרמה חינמית. משמש גם את טופס האתר וגם את הקליטה במייל, כדי
@@ -16,11 +22,11 @@ function priceFor(list, tier) {
 // לתור האישור הרגיל - רק אם התכונה המשולמת פעילה בכלל (.env), נדרים פלוס
 // מוגדר, והמחיר לרמה הזו גדול מ-0.
 function requiresPayment(list, tier) {
-  return PAID_FEATURES_ENABLED && nedarim.isConfigured() && priceFor(list, tier) > 0;
+  return paidFeaturesEnabled() && nedarim.isConfigured() && priceFor(list, tier) > 0;
 }
 
 function generatePaymentToken() {
   return uuidv4();
 }
 
-module.exports = { PAID_FEATURES_ENABLED, priceFor, requiresPayment, generatePaymentToken };
+module.exports = { paidFeaturesEnabled, priceFor, requiresPayment, generatePaymentToken };
