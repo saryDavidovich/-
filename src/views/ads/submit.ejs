@@ -36,8 +36,8 @@
       <label>סוג מודעה</label>
       <select name="paid_tier" id="tierSelect" onchange="document.getElementById('freeHint').style.display = (this.value === 'free') ? 'block' : 'none'; document.getElementById('colorFields').style.display = (this.value === 'plus' || this.value === 'premium') ? 'block' : 'none'; document.getElementById('imageField').style.display = (this.value === 'premium') ? 'block' : 'none';">
         <option value="free" <%= requestedTier === 'free' ? 'selected' : '' %>>מודעת שורה (חינם)</option>
-        <option value="plus" <%= requestedTier === 'plus' ? 'selected' : '' %>>מודעה מודגשת</option>
-        <option value="premium" <%= requestedTier === 'premium' ? 'selected' : '' %>>מודעה פרימיום</option>
+        <option value="plus" <%= requestedTier === 'plus' ? 'selected' : '' %>>מודעה מודגשת<%= (typeof plusPrice !== 'undefined' && plusPrice > 0) ? ' - ' + plusPrice + ' ש"ח' : '' %></option>
+        <option value="premium" <%= requestedTier === 'premium' ? 'selected' : '' %>>מודעה פרימיום<%= (typeof premiumPrice !== 'undefined' && premiumPrice > 0) ? ' - ' + premiumPrice + ' ש"ח' : '' %></option>
       </select>
       <div class="hint" id="freeHint" style="display:<%= requestedTier === 'free' ? 'block' : 'none' %>;">עד <%= wordLimit %> מילים בחינם.</div>
 
@@ -55,6 +55,7 @@
       <% } %>
 
       <button class="btn" type="submit">פרסם מודעה</button>
+      <div class="hint">מודעה מודגשת/פרימיום בתשלום: לאחר השליחה תועבר לדף תשלום מאובטח, והמודעה תפורסם לאחר אישור התשלום.</div>
     </form>
   <% } %>
 </div>

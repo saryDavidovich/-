@@ -16,6 +16,20 @@
     <% } %>
   </div>
 
+  <% if (pendingPaymentAds && pendingPaymentAds.length > 0) { %>
+    <div class="card" style="margin-bottom:16px;background:#fdf8ee;border:1px solid #eadfc0;">
+      <div style="font-size:13px;font-weight:bold;margin-bottom:8px;">
+        ממתינות לתשלום (<%= pendingPaymentAds.length %>) - לא בתור האישור עדיין, ייכנסו אוטומטית לאחר שהתשלום יאושר
+      </div>
+      <% pendingPaymentAds.forEach(ad => { %>
+        <div style="font-size:13px;color:#555;padding:4px 0;border-top:1px solid #eadfc0;">
+          <%= ad.from_email %> - <%= ad.paid_tier === 'premium' ? 'פרימיום' : 'מודגשת' %> (<%= ad.payment_amount %> ש"ח)
+          <% if (ad.subject) { %>- "<%= ad.subject %>"<% } %>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+
   <% if (items.length === 0) { %>
     <div class="card">אין פריטים ממתינים לאישור כרגע.</div>
   <% } %>

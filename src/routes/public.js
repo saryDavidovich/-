@@ -30,6 +30,8 @@ function validTier(t) {
   return ['free', 'plus', 'premium'].includes(t) ? t : 'free';
 }
 
+const { requiresPayment, priceFor, generatePaymentToken } = require('../paymentUtil');
+
 // -------- פרסום מודעה --------
 router.get('/ads/:slug', (req, res) => {
   const list = db.prepare('SELECT * FROM lists WHERE slug = ? AND active = 1').get(req.params.slug);
@@ -37,7 +39,8 @@ router.get('/ads/:slug', (req, res) => {
   const requestedTier = validTier(req.query.tier);
   res.render('ads/submit', {
     list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT,
-    requestedTier, error: null, sent: false
+    requestedTier, error: null, sent: false,
+    plusPrice: priceFor(list, 'plus'), premiumPrice: priceFor(list, 'premium')
   });
 });
 
@@ -55,7 +58,7 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
     return res.render('ads/submit', {
       list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier,
       error: `המודעה החינמית מוגבלת ל-${FREE_WORD_LIMIT} מילים (כרגע: ${wc}).`,
-      sent: false
+      sent: false, plusPrice: priceFor(list, 'plus'), premiumPrice: priceFor(list, 'premium')
     });
   }
 
@@ -68,21 +71,36 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
     }
     const useStyle = PAID_FEATURES_ENABLED && (tier === 'plus' || tier === 'premium');
 
+    // מודעה בתשלום (מודגשת/פרימיום עם מחיר > 0 לרשימה זו) לא נכנסת ישר
+    // ל"ממתין לאישור" - היא נשמרת כ"ממתינה לתשלום" ומועברת לדף הסליקה.
+    // רק אחרי שנדרים פלוס מאשרים בפועל (webhook, ראה routes/payment.js)
+    // היא הופכת ל-pending הרגיל ונכנסת לתור.
+    const needsPayment = requiresPayment(list, tier);
+    const status = needsPayment ? 'pending_payment' : 'pending';
+    const paymentToken = needsPayment ? generatePaymentToken() : null;
+    const paymentAmount = needsPayment ? priceFor(list, tier) : null;
+    const paymentStatus = needsPayment ? 'pending' : 'not_required';
+
     db.prepare(`
-      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color)
-      VALUES (?, 'ad', 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color, payment_token, payment_amount, payment_status)
+      VALUES (?, 'ad', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      list.id, email, subject || '', body, wc, tier, JSON.stringify(images),
-      useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null
+      list.id, status, email, subject || '', body, wc, tier, JSON.stringify(images),
+      useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null,
+      paymentToken, paymentAmount, paymentStatus
     );
 
-    res.render('ads/submit', { list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier, error: null, sent: true });
+    if (needsPayment) {
+      return res.redirect(`/payment/${paymentToken}`);
+    }
+
+    res.render('ads/submit', { list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier, error: null, sent: true, plusPrice: priceFor(list, 'plus'), premiumPrice: priceFor(list, 'premium') });
   } catch (err) {
     console.error('שגיאה בפרסום מודעה מהלקוח:', err);
     res.render('ads/submit', {
       list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier,
       error: 'אירעה שגיאה בשליחת המודעה. נסה שוב, אולי בלי תמונה.',
-      sent: false
+      sent: false, plusPrice: priceFor(list, 'plus'), premiumPrice: priceFor(list, 'premium')
     });
   }
 });

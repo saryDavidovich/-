@@ -17,9 +17,16 @@ process.on('unhandledRejection', (err) => {
 const adminRoutes = require('./routes/admin');
 const inboundRoutes = require('./routes/inbound');
 const publicRoutes = require('./routes/public');
+const paymentRoutes = require('./routes/payment');
 const { checkAndRunDueSends } = require('./compiler');
 
 const app = express();
+
+// חובה כדי ש-req.ip ישקף את הכתובת האמיתית של הפונה ולא את כתובת ה-proxy
+// הפנימי של Railway - בלי זה, אימות ה-IP של ה-CallBack מנדרים פלוס
+// (src/nedarim.js) תמיד ייכשל. '1' = לסמוך על ה-hop הראשון בלבד (הפרוקסי
+// המיידי של Railway), מספיק כאן כי אין שרשרת פרוקסי נוספת.
+app.set('trust proxy', 1);
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -41,6 +48,7 @@ app.use(session({
 app.get('/', (req, res) => res.redirect('/admin'));
 app.use('/admin', adminRoutes);
 app.use('/webhooks', inboundRoutes);
+app.use('/', paymentRoutes);
 app.use('/', publicRoutes);
 
 // שליחה אוטומטית - כל רשימה קובעת לעצמה יום+שעה משלה (בהגדרות הרשימה),

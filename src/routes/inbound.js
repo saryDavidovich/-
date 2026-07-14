@@ -40,6 +40,9 @@ function countWords(str = '') {
   return str.trim().split(/\s+/).filter(Boolean).length;
 }
 
+const { requiresPayment, priceFor, generatePaymentToken } = require('../paymentUtil');
+const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+
 // שדה ה-"to" של SendGrid מגיע בפורמט כמו: "Name <ask+parenting@yourdomain.com>"
 // או פשוט "ask+parenting@yourdomain.com", ולפעמים כמה כתובות מופרדות בפסיק.
 function extractEmailAddresses(raw) {
@@ -180,10 +183,41 @@ router.post('/inbound', upload.any(), async (req, res) => {
 
       const links = extractLinks(bodyText);
 
+      // מודעה מודגשת/פרימיום עם מחיר מוגדר לרשימה זו - לא נכנסת ישר לתור,
+      // אלא ל"ממתינה לתשלום" (ראה src/paymentUtil.js + routes/payment.js,
+      // אותה לוגיקה בדיוק כמו בטופס האתר). ללקוח שנרשם דרך המייל שולחים
+      // בחזרה מייל עם קישור לדף התשלום, כי אין לו דף תגובה מיידי כמו בטופס.
+      const needsPayment = type === 'ad' && requiresPayment(list, tier);
+      const status = needsPayment ? 'pending_payment' : 'pending';
+      const paymentToken = needsPayment ? generatePaymentToken() : null;
+      const paymentAmount = needsPayment ? priceFor(list, tier) : null;
+      const paymentStatus = needsPayment ? 'pending' : 'not_required';
+
       db.prepare(`
-        INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, links_json, bg_color, text_color)
-        VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(list.id, type, fromEmail, subject, bodyText, countWords(bodyText), tier, JSON.stringify(attachedImages), JSON.stringify(links), bgColor, textColor);
+        INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, links_json, bg_color, text_color, payment_token, payment_amount, payment_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        list.id, type, status, fromEmail, subject, bodyText, countWords(bodyText), tier,
+        JSON.stringify(attachedImages), JSON.stringify(links), bgColor, textColor,
+        paymentToken, paymentAmount, paymentStatus
+      );
+
+      if (needsPayment) {
+        const { sendViaSendGrid } = require('../compiler');
+        const paymentUrl = `${BASE_URL}/payment/${paymentToken}`;
+        const tierName = tier === 'premium' ? 'פרימיום' : 'מודגשת';
+        await sendViaSendGrid(
+          fromEmail,
+          `נותר שלב אחד - תשלום עבור המודעה ב"${list.name}"`,
+          `<div dir="rtl" style="font-family:Arial,sans-serif;">
+            <p>המודעה שלך (${tierName}, ${paymentAmount} ש"ח) התקבלה וממתינה לתשלום.</p>
+            <p>לחץ כאן כדי להשלים את התשלום ולשלוח את המודעה לתור האישור:</p>
+            <p><a href="${paymentUrl}">${paymentUrl}</a></p>
+          </div>`
+        );
+        console.log(`נקלטה מודעה בתשלום (רמה: ${tier}, ${paymentAmount} ש"ח) לרשימת "${list.name}" מאת ${fromEmail} - נשלח קישור תשלום.`);
+        return res.status(200).send('awaiting payment');
+      }
 
       console.log(`נקלט בהצלחה: ${type} (רמה: ${tier}${bgColor ? ', צבע: ' + bgColor : ''}${attachedImages.length ? ', ' + attachedImages.length + ' תמונות' : ''}) לרשימת "${list.name}" מאת ${fromEmail}`);
       return res.status(200).send('queued');

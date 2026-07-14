@@ -146,6 +146,14 @@ if (!listCols.includes('show_ads_free')) {
   db.exec("UPDATE lists SET show_ads_free = show_ad_buttons, show_ads_plus = show_ad_buttons, show_ads_premium = show_ad_buttons");
 }
 
+// מחיר (בשקלים, מספר שלם) למודעה מודגשת/פרימיום - נגדר בנפרד לכל רשימה
+// (ראה admin/settings). 0 = בחינם, כמו שהיה עד עכשיו - כך שדרוג המערכת
+// הזה לא משנה כלום למי שלא נכנס להגדיר מחיר בפועל.
+if (!listCols.includes('plus_price')) {
+  db.exec("ALTER TABLE lists ADD COLUMN plus_price INTEGER DEFAULT 0");
+  db.exec("ALTER TABLE lists ADD COLUMN premium_price INTEGER DEFAULT 0");
+}
+
 // הודעות "צור קשר" מהלקוחות למנהל - טבלה נפרדת (לא items, כי אלה לא
 // מיועדות לפרסום בגיליון) - עם ציון מאיזו רשימה כל הודעה הגיעה.
 db.exec(`
@@ -202,6 +210,69 @@ if (itemsNeedsMigration) {
     CREATE INDEX IF NOT EXISTS idx_items_list_status ON items(list_id, status);
   `);
   console.log('מיגרציית items הושלמה בהצלחה.');
+}
+
+// ג2. תשלום למודעות בתשלום (מודגשת/פרימיום) - כשמוגדר מחיר > 0 לרשימה,
+// מודעה חדשה לא נכנסת ישר ל"ממתין לאישור" אלא ל-status='pending_payment'
+// עד שנדרים פלוס מאשרים בפועל שהתשלום בוצע (ראה src/nedarim.js +
+// src/routes/payment.js). SQLite לא מאפשר ALTER על CHECK קיים, אז צריך
+// לבנות מחדש את הטבלה כמו במיגרציה הקודמת (article) - באותו אופן, שומרים
+// את כל הנתונים הקיימים.
+const itemsTableSql2 = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='items'").get();
+const itemsNeedsPaymentMigration = itemsTableSql2 && !itemsTableSql2.sql.includes("'pending_payment'");
+
+if (itemsNeedsPaymentMigration) {
+  console.log('מריץ מיגרציה של טבלת items (הוספת תמיכה בתשלום סליקה)...');
+  // manual_order יתכן שעדיין לא קיים בטבלה הישנה (למשל בהתקנה חדשה
+  // לגמרי, שעדיין לא הגיעה למיגרציה הייעודית לו למטה בקובץ) - בודקים
+  // דינמית איזה מהעמודות באמת קיימות לפני ההעתקה, כדי לא לקבל שגיאת
+  // "no such column". אם היא לא קיימת, manual_order פשוט יישאר NULL
+  // בטבלה החדשה, וימולא כרגיל על ידי לוגיקת ה-backfill שמופיעה בהמשך.
+  const oldItemsHasManualOrder = db.prepare("PRAGMA table_info(items)").all().some(c => c.name === 'manual_order');
+  db.exec(`
+    ALTER TABLE items RENAME TO items_old2;
+
+    CREATE TABLE items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      list_id INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK(type IN ('question','answer','ad','article')),
+      parent_id INTEGER REFERENCES items(id),
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending_payment','pending','approved','rejected','sent')),
+      from_email TEXT,
+      subject TEXT DEFAULT '',
+      body_raw TEXT DEFAULT '',
+      body_edited TEXT,
+      word_count INTEGER DEFAULT 0,
+      paid_tier TEXT DEFAULT 'free' CHECK(paid_tier IN ('free','plus','premium')),
+      images_json TEXT DEFAULT '[]',
+      links_json TEXT DEFAULT '[]',
+      bg_color TEXT,
+      text_color TEXT,
+      issue_id INTEGER REFERENCES issues(id),
+      payment_token TEXT,
+      payment_amount INTEGER,
+      payment_status TEXT DEFAULT 'not_required' CHECK(payment_status IN ('not_required','pending','paid')),
+      nedarim_transaction_id TEXT,
+      paid_at TEXT,
+      manual_order INTEGER,
+      created_at TEXT DEFAULT (datetime('now')),
+      approved_at TEXT
+    );
+
+    INSERT INTO items (id, list_id, type, parent_id, status, from_email, subject, body_raw,
+      body_edited, word_count, paid_tier, images_json, links_json, bg_color, text_color,
+      issue_id, ${oldItemsHasManualOrder ? 'manual_order,' : ''} created_at, approved_at)
+    SELECT id, list_id, type, parent_id, status, from_email, subject, body_raw,
+      body_edited, word_count, paid_tier, images_json, links_json, bg_color, text_color,
+      issue_id, ${oldItemsHasManualOrder ? 'manual_order,' : ''} created_at, approved_at
+    FROM items_old2;
+
+    DROP TABLE items_old2;
+
+    CREATE INDEX IF NOT EXISTS idx_items_list_status ON items(list_id, status);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_items_payment_token ON items(payment_token) WHERE payment_token IS NOT NULL;
+  `);
+  console.log('מיגרציית תשלום הושלמה בהצלחה.');
 }
 
 // ג. עמודת manual_order - סדר תצוגה גמיש לחלוטין (כל פריט - שאלה, מודעה,

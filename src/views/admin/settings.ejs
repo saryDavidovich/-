@@ -41,6 +41,16 @@
 
       <div class="sidebar-divider" style="background:#e3e1d8;margin:16px 0;"></div>
 
+      <div class="pill" style="display:block;margin-bottom:12px;line-height:1.6;">
+        מחיר בשקלים למודעה בתשלום ברשימה הזו. 0 = בחינם (כמו היום). כשמוגדר מחיר, המודעה עוברת דרך תשלום מאובטח (נדרים פלוס) ונכנסת לתור האישור רק לאחר שהתשלום אושר בפועל.
+      </div>
+      <label>מחיר למודעה מודגשת (ש"ח)</label>
+      <input type="number" name="plus_price" min="0" step="1" value="<%= list.plus_price || 0 %>" />
+      <label>מחיר למודעה פרימיום (ש"ח)</label>
+      <input type="number" name="premium_price" min="0" step="1" value="<%= list.premium_price || 0 %>" />
+
+      <div class="sidebar-divider" style="background:#e3e1d8;margin:16px 0;"></div>
+
       <label>יום ושעה לשליחה אוטומטית שבועית</label>
       <div style="font-size:11px;color:#888780;margin:-4px 0 8px;">
         לפי שעון ישראל - קיץ/חורף מחושב אוטומטית, אין צורך לשנות כלום פעמיים בשנה.

@@ -209,6 +209,9 @@ router.get('/lists/:id/queue', requireAuth, (req, res) => {
   const pendingAnswers = db.prepare(`
     SELECT * FROM items WHERE list_id = ? AND status = 'pending' AND type = 'answer' ORDER BY created_at ASC
   `).all(list.id);
+  const pendingPaymentAds = db.prepare(`
+    SELECT * FROM items WHERE list_id = ? AND status = 'pending_payment' AND type = 'ad' ORDER BY created_at ASC
+  `).all(list.id);
 
   const pendingQuestionIds = new Set(pendingQuestions.map(q => q.id));
 
@@ -232,7 +235,7 @@ router.get('/lists/:id/queue', requireAuth, (req, res) => {
     .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   res.render('admin/queue', {
-    list, items, allLists: getAllLists(),
+    list, items, allLists: getAllLists(), pendingPaymentAds,
     testSendResult: req.query.test_sent ? 'הגיליון נשלח לבדיקה בהצלחה.' : null,
     testSendError: req.query.test_error || null
   });
@@ -446,7 +449,7 @@ router.post('/lists/:id/settings', requireAuth, express.urlencoded({ extended: t
   const list = loadListOr404(req, res);
   if (!list) return;
 
-  const { name, description, accent_color, show_ads_free, show_ads_plus, show_ads_premium, show_ask_button, send_day, send_hour, send_minute } = req.body;
+  const { name, description, accent_color, show_ads_free, show_ads_plus, show_ads_premium, show_ask_button, send_day, send_hour, send_minute, plus_price, premium_price } = req.body;
 
   // בונים את הפלטה מתוך שני מערכים מקבילים (color_name[] / color_hex[]) -
   // מתעלמים משורות ריקות (שם ריק, למשל אם הוסיפו שורה ולא מילאו אותה).
@@ -459,13 +462,16 @@ router.post('/lists/:id/settings', requireAuth, express.urlencoded({ extended: t
   db.prepare(`
     UPDATE lists SET name = ?, description = ?, accent_color = ?,
       show_ads_free = ?, show_ads_plus = ?, show_ads_premium = ?, show_ask_button = ?,
-      send_day = ?, send_hour = ?, send_minute = ?, ad_color_palette_json = ?
+      send_day = ?, send_hour = ?, send_minute = ?, ad_color_palette_json = ?,
+      plus_price = ?, premium_price = ?
     WHERE id = ?
   `).run(
     name.trim(), description || '', accent_color || list.accent_color,
     show_ads_free ? 1 : 0, show_ads_plus ? 1 : 0, show_ads_premium ? 1 : 0, show_ask_button ? 1 : 0,
     parseInt(send_day, 10) || 0, parseInt(send_hour, 10) || 0, parseInt(send_minute, 10) || 0,
-    JSON.stringify(palette), list.id
+    JSON.stringify(palette),
+    Math.max(0, parseInt(plus_price, 10) || 0), Math.max(0, parseInt(premium_price, 10) || 0),
+    list.id
   );
 
   res.redirect(`/admin/lists/${list.id}/settings`);
