@@ -7,6 +7,7 @@
     <h1>כניסה לפאנל הניהול</h1>
     <% if (error) { %><p style="color:#c04828;"><%= error %></p><% } %>
     <form method="POST" action="/admin/login">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
       <input type="password" name="password" placeholder="סיסמה" required />
       <button class="btn" type="submit">כניסה</button>
     </form>

@@ -3,6 +3,8 @@ const express = require('express');
 const session = require('express-session');
 const path = require('path');
 const cron = require('node-cron');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 // רשת ביטחון: בלי זה, שגיאה לא-מטופלת בכל בקשה בודדת (כמו העלאת קובץ
 // פגום) מפילה את כל השרת עבור כולם עד שRailway מפעיל אותו מחדש. עדיף
@@ -28,6 +30,25 @@ const app = express();
 // המיידי של Railway), מספיק כאן כי אין שרשרת פרוקסי נוספת.
 app.set('trust proxy', 1);
 
+// כותרות אבטחה סטנדרטיות. ה-CSP מותאם ידנית (לא ברירת המחדל המחמירה של
+// helmet) כי בעמודי הניהול ובדף התשלום יש סקריפטים/סגנונות inline רבים -
+// CSP מחמיר מדי היה שובר את הכל בלי תועלת ממשית (אין nonce-based setup
+// כאן). frame-src חייב לכלול את matara.pro - זה דומיין נדרים פלוס
+// שהאייפרם של התשלום נטען ממנו (ראה src/views/payment.ejs).
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"],
+      frameSrc: ["'self'", "https://www.matara.pro"]
+    }
+  },
+  crossOriginEmbedderPolicy: false
+}));
+
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -39,11 +60,44 @@ const UPLOAD_DIR = path.join(__dirname, '..', 'data', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 app.use('/uploads', express.static(UPLOAD_DIR));
 
+const isProduction = (process.env.BASE_URL || '').startsWith('https://');
 app.use(session({
   secret: process.env.SESSION_SECRET || 'change-me-in-env',
   resave: false,
-  saveUninitialized: false
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    // secure=true דורש HTTPS בפועל - מוסק אוטומטית מ-BASE_URL, כדי לא
+    // לנעול פיתוח מקומי (http://localhost) בטעות.
+    secure: isProduction,
+    sameSite: 'lax',
+    maxAge: 1000 * 60 * 60 * 24 * 7 // שבוע
+  }
 }));
+
+// הגבלת קצב - שכבת הגנה בסיסית נגד ניסיונות brute-force על הסיסמה
+// וספאם על טפסים ציבוריים (שליחת מודעות/הרשמה). לא חל על ה-webhook
+// מנדרים פלוס (אין לו קצב חריג צפוי, ואסור לחסום קריאות אמיתיות מהם).
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'יותר מדי ניסיונות התחברות. נסה שוב בעוד כמה דקות.'
+});
+app.use('/admin/login', loginLimiter);
+
+const publicFormLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: 'יותר מדי בקשות. נסה שוב בעוד כמה דקות.'
+});
+app.use(['/ads', '/ask', '/subscribe', '/payment'], (req, res, next) => {
+  if (req.path === '/webhook') return next(); // ה-webhook מנדרים פלוס לא מוגבל
+  return publicFormLimiter(req, res, next);
+});
 
 app.get('/', (req, res) => res.redirect('/admin'));
 app.use('/admin', adminRoutes);

@@ -61,10 +61,11 @@
     });
     if (order.length === 0) return;
 
+    var csrfMeta = document.querySelector('meta[name="csrf-token"]');
     fetch('/admin/lists/' + listId + '/reorder', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order: order })
+      body: JSON.stringify({ order: order, _csrf: csrfMeta ? csrfMeta.content : '' })
     })
       .then(function () { refreshIframe(); })
       .catch(function () { /* אם השמירה נכשלה, הגרירה בעמוד לא תישמר בטעינה הבאה */ });

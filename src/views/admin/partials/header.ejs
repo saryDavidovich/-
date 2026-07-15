@@ -4,6 +4,24 @@
   <meta charset="utf-8">
   <title><%= typeof pageTitle !== 'undefined' ? pageTitle : 'ניהול' %></title>
   <link rel="stylesheet" href="/admin.css">
+  <meta name="csrf-token" content="<%= typeof csrfToken !== 'undefined' ? csrfToken : '' %>">
+  <script>
+    // מזריקים אוטומטית שדה חבוי עם טוקן ה-CSRF לכל טופס POST בעמוד -
+    // כך שאין צורך לערוך ידנית כל טופס בכל view של הניהול בנפרד. ראה
+    // src/csrf.js לבדיקה בצד השרת.
+    document.addEventListener('DOMContentLoaded', function () {
+      var token = document.querySelector('meta[name="csrf-token"]').content;
+      document.querySelectorAll('form').forEach(function (form) {
+        if ((form.method || '').toLowerCase() !== 'post') return;
+        if (form.querySelector('input[name="_csrf"]')) return;
+        var input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = '_csrf';
+        input.value = token;
+        form.appendChild(input);
+      });
+    });
+  </script>
 </head>
 <body class="with-sidebar">
   <div class="app-shell">

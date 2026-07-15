@@ -9,6 +9,7 @@ const { getOrderedApprovedEntries, nextManualOrder, saveManualOrder, getIssueSiz
 const nedarim = require('../nedarim');
 const { getSetting, setSetting, getBaseUrl } = require('../appSettings');
 const { paidFeaturesEnabled } = require('../paymentUtil');
+const { attachCsrfToken, verifyCsrfToken } = require('../csrf');
 
 function requireAuth(req, res, next) {
   if (req.session && req.session.isAdmin) return next();
@@ -18,6 +19,16 @@ function requireAuth(req, res, next) {
 function getAllLists() {
   return db.prepare('SELECT * FROM lists ORDER BY created_at DESC').all();
 }
+
+// ניתוח גוף הבקשה גלובלית לכל נתיבי הניהול (בנוסף לקריאות urlencoded/json
+// שכבר קיימות בנתיבים ספציפיים - זה לא כפול/מזיק, אקספרס פשוט מדלג אם
+// הגוף כבר פוענח פעם אחת) - נדרש כדי שטוקן ה-CSRF יהיה זמין ב-req.body
+// באופן עקבי בכל נתיב, בלי תלות שכל נתיב יזכור להוסיף את זה בעצמו.
+// לא משפיע על multer (multipart/form-data) - זה content-type אחר לגמרי.
+router.use(express.urlencoded({ extended: true }));
+router.use(express.json());
+router.use(attachCsrfToken);
+router.use(verifyCsrfToken);
 
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
