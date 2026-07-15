@@ -28,7 +28,15 @@ function getAllLists() {
 router.use(express.urlencoded({ extended: true }));
 router.use(express.json());
 router.use(attachCsrfToken);
-router.use(verifyCsrfToken);
+// בקשות multipart/form-data (העלאת תמונה/קובץ) מדולגות כאן בכוונה: הגוף
+// שלהן מפוענח רק על ידי multer (upload.single(...)) שרץ ברמת הנתיב
+// הספציפי, אחרי המידלוור הגלובלי הזה - כלומר req.body עדיין ריק בשלב
+// הזה עבורן. האימות עבור הנתיבים האלה קורה בנפרד, אחרי multer (ראה
+// verifyCsrfToken שמופיע כארגומנט אחרי upload.single(...) בכל נתיב כזה).
+router.use((req, res, next) => {
+  if (req.is('multipart/form-data')) return next();
+  return verifyCsrfToken(req, res, next);
+});
 
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -246,7 +254,7 @@ router.post('/items/:id/edit', requireAuth, express.urlencoded({ extended: true 
 
 // עריכת מודעה שכבר אושרה - כולל אפשרות לשנות רמה/צבעים/תמונה, אותו טופס
 // כמו באישור בתור, רק שהפריט כבר approved ונשאר approved.
-router.post('/items/:id/edit-ad', requireAuth, upload.single('image'), async (req, res) => {
+router.post('/items/:id/edit-ad', requireAuth, upload.single('image'), verifyCsrfToken, async (req, res) => {
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).send('לא נמצא');
 
@@ -355,7 +363,7 @@ router.post('/items/:id/approve', requireAuth, express.urlencoded({ extended: tr
 // שומרת תמונה שהגיעה כבר כקובץ מצורף במייל הנכנס (ראה inbound.js) אם לא
 // הועלתה תמונה חדשה כאן - רק אם הרמה עדיין פרימיום. אם הרמה שונתה
 // לחינם/מודגשת, התמונה (אם הייתה) מוסרת כי רק פרימיום תומכת בתמונה. --------
-router.post('/items/:id/approve-ad', requireAuth, upload.single('image'), async (req, res) => {
+router.post('/items/:id/approve-ad', requireAuth, upload.single('image'), verifyCsrfToken, async (req, res) => {
   const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
   if (!item) return res.status(404).send('לא נמצא');
 
@@ -454,7 +462,7 @@ router.get('/lists/:id/compose/ad', requireAuth, (req, res) => {
   res.render('admin/compose_ad', { list, allLists: getAllLists() });
 });
 
-router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), async (req, res) => {
+router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), verifyCsrfToken, async (req, res) => {
   const list = loadListOr404(req, res);
   if (!list) return;
 
@@ -644,7 +652,7 @@ router.get('/lists/:id/subscribers/export.xlsx', requireAuth, (req, res) => {
 });
 
 // -------- העלאת קובץ אקסל/CSV עם הרבה מיילים בבת אחת --------
-router.post('/lists/:id/subscribers/bulk-upload', requireAuth, upload.single('file'), (req, res) => {
+router.post('/lists/:id/subscribers/bulk-upload', requireAuth, upload.single('file'), verifyCsrfToken, (req, res) => {
   const list = loadListOr404(req, res);
   if (!list) return;
 

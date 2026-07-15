@@ -76,8 +76,14 @@
     var tier = document.getElementById('tierSelect').value;
     var isPaid = (tier === 'plus' || tier === 'premium');
     document.getElementById('freeHint').style.display = (tier === 'free') ? 'block' : 'none';
-    document.getElementById('colorFields').style.display = isPaid ? 'block' : 'none';
-    document.getElementById('imageField').style.display = (tier === 'premium') ? 'block' : 'none';
+    // colorFields/imageField קיימים ב-DOM רק אם paidEnabled=true (ראה
+    // <% if (paidEnabled) %> למעלה) - בלי הבדיקה הזו, כשהתשלום כבוי,
+    // getElementById מחזיר null וההמשך (כולל clientDetails) לא היה
+    // מתבצע בכלל בגלל שגיאה שקטה בקונסול.
+    var colorFields = document.getElementById('colorFields');
+    if (colorFields) colorFields.style.display = isPaid ? 'block' : 'none';
+    var imageField = document.getElementById('imageField');
+    if (imageField) imageField.style.display = (tier === 'premium') ? 'block' : 'none';
     document.getElementById('clientDetails').style.display = isPaid ? 'block' : 'none';
     document.getElementById('clientNameField').required = isPaid;
     document.getElementById('phoneField').required = isPaid;

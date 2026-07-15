@@ -40,6 +40,13 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'unsafe-inline'"],
+      // script-src-attr הוא דירקטיבה נפרדת מ-script-src בCSP3, ומיועדת
+      // ספציפית לתכונות כמו onchange="..."/onclick="..." (לא לתגית
+      // <script>). ברירת המחדל של helmet לדירקטיבה הזו היא 'none' - בלי
+      // השורה הבאה, כל תכונת onXXX inline באתר (יש עשרות כאלה בקוד -
+      // בורר רמת מודעה, כפתורי עיצוב טקסט, טפסי ניהול ועוד) הייתה נחסמת
+      // בדפדפן אמיתי, גם אם script-src עצמו מתיר unsafe-inline.
+      scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'"],
