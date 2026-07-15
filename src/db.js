@@ -40,6 +40,21 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value TEXT
 );
 
+-- יומן מלא של כל בקשת CallBack שהתקבלה מ-/payment/webhook, כולל כאלה
+-- שנדחו (IP לא מוכר) - כדי שיהיה תיעוד לבדוק/להוכיח מה קרה בפועל, ולתת
+-- למנהל דרך לזהות ולשחרר ידנית תשלום שנדחה בטעות (למשל אם נדרים פלוס
+-- מוסיפים כתובת IP חדשה שעדיין לא בתיעוד - ראה src/nedarim.js).
+CREATE TABLE IF NOT EXISTS webhook_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  received_at TEXT DEFAULT (datetime('now')),
+  source_ip TEXT,
+  trusted INTEGER DEFAULT 0,
+  item_id INTEGER,
+  payment_token TEXT,
+  raw_body TEXT,
+  outcome TEXT
+);
+
 CREATE TABLE IF NOT EXISTS lists (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   slug TEXT UNIQUE NOT NULL,

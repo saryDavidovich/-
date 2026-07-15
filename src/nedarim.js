@@ -21,6 +21,13 @@ function getMosad() {
 function getApiValid() {
   return getSetting('nedarim_api_valid', process.env.NEDARIM_API_VALID || '');
 }
+// שים לב: זו סיסמה שונה מ-ApiValid - "סיסמת API" (ApiPassword) משמשת רק
+// למשיכת נתונים (הסטוריית עסקאות וכו'), לא לביצוע תשלומים. משמשת כאן רק
+// כדי לאמת ידנית מול נדרים פלוס עסקה שה-CallBack שלה הגיע מ-IP לא מוכר
+// (ראה admin.js /items/:id/verify-payment).
+function getApiPassword() {
+  return getSetting('nedarim_api_password', process.env.NEDARIM_API_PASSWORD || '');
+}
 
 // כתובות ה-IP שמהן נדרים פלוס שולחים CallBack - ראה "אייפרם: אימות תשלום
 // ואבטחה" בתיעוד. כל בקשה שלא מגיעה מאחת מהכתובות האלה נדחית.
@@ -83,4 +90,34 @@ function isFromNedarim(req) {
   return NEDARIM_CALLBACK_IPS.includes(ip);
 }
 
-module.exports = { isConfigured, createServerTransaction, isFromNedarim, getMosad, NEDARIM_CALLBACK_IPS };
+// משיכת הסטוריית עסקאות אמיתית מנדרים פלוס (GetHistoryJson) - משמשת
+// לאימות ידני של תשלום שה-CallBack שלו הגיע מכתובת IP לא מתועדת (ראה
+// אזהרת נדרים פלוס בתיעוד: "יתכן שנוספה כתובת חדשה" - לפני שסומכים על
+// זה עיוור, עדיף להצליב מול הנתונים האמיתיים שלהם). מוגבל ל-20 קריאות
+// בשעה מצידם, ולכן משמש רק לבדיקה ידנית נקודתית, לא כלולאת סנכרון.
+const HISTORY_URL = 'https://matara.pro/nedarimplus/Reports/Manage3.aspx';
+
+async function getRecentTransactions({ maxId = 50 } = {}) {
+  if (!getApiPassword()) {
+    return { ok: false, error: 'סיסמת API (ApiPassword) לא מוגדרת - נדרשת רק לבדיקה ידנית, ראה הגדרות תשלום' };
+  }
+  const params = new URLSearchParams({
+    Action: 'GetHistoryJson',
+    MosadId: getMosad(),
+    ApiPassword: getApiPassword(),
+    MaxId: String(maxId)
+  });
+  const resp = await fetch(`${HISTORY_URL}?${params.toString()}`);
+  const text = await resp.text();
+  let data;
+  try { data = JSON.parse(text); } catch (e) {
+    return { ok: false, error: `תגובה לא תקינה מנדרים פלוס: ${text.slice(0, 200)}` };
+  }
+  if (!Array.isArray(data)) {
+    return { ok: false, error: (data && data.Message) || 'שגיאה לא ידועה בקבלת הסטוריית עסקאות' };
+  }
+  // האחרונות קודם - נוח יותר לבדיקה ידנית של עסקה שרק קרתה.
+  return { ok: true, transactions: data.slice().reverse() };
+}
+
+module.exports = { isConfigured, createServerTransaction, isFromNedarim, getMosad, getRecentTransactions, NEDARIM_CALLBACK_IPS };

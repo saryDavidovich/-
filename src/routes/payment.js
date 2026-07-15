@@ -63,37 +63,58 @@ router.post('/payment/:token/start', express.json(), async (req, res) => {
 // כתובת ה-IP השולחת + הצלבת ה-Param הייחודי + הסכום שאנחנו כבר מכירים.
 router.post('/payment/webhook', express.json(), (req, res) => {
   // תמיד עונים 200 גם בשגיאה/דחייה - מונע שנדרים ינסה לשדר את אותו עדכון
-  // שוב ושוב מיותר; השגיאה מתועדת ביומן.
+  // שוב ושוב מיותר; השגיאה מתועדת ביומן וגם ב-webhook_log לבדיקה בממשק.
+  const data = req.body || {};
+  const paymentToken = data.Param1 || null;
+  const sourceIp = (req.ip || '').replace('::ffff:', '');
+  const trusted = nedarim.isFromNedarim(req);
+  const relatedItem = paymentToken
+    ? db.prepare('SELECT * FROM items WHERE payment_token = ?').get(paymentToken)
+    : null;
+
+  const logEntry = (outcome) => {
+    try {
+      db.prepare(`
+        INSERT INTO webhook_log (source_ip, trusted, item_id, payment_token, raw_body, outcome)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(sourceIp, trusted ? 1 : 0, relatedItem ? relatedItem.id : null, paymentToken, JSON.stringify(data), outcome);
+    } catch (logErr) {
+      console.error('שגיאה בשמירת webhook_log:', logErr);
+    }
+  };
+
   try {
-    if (!nedarim.isFromNedarim(req)) {
-      console.warn('CallBack מנדרים פלוס התקבל מכתובת IP לא מוכרת:', req.ip);
+    if (!trusted) {
+      console.warn(`CallBack מנדרים פלוס התקבל מכתובת IP לא מוכרת: ${sourceIp}${relatedItem ? ` (item #${relatedItem.id})` : ''} - ניתן לאשר ידנית בממשק אם מדובר בכתובת אמיתית שלהם.`);
+      logEntry('rejected: untrusted ip');
       return res.status(200).send('ignored: untrusted source');
     }
 
-    const data = req.body || {};
-    const paymentToken = data.Param1;
     const status = data.Status; // 'OK' | 'Error' - לפי מבנה TransactionResponse
     if (!paymentToken) {
       console.warn('CallBack מנדרים פלוס בלי Param1 (מזהה תשלום):', data);
+      logEntry('rejected: no token');
       return res.status(200).send('ignored: no token');
     }
 
-    const item = db.prepare('SELECT * FROM items WHERE payment_token = ?').get(paymentToken);
-    if (!item) {
+    if (!relatedItem) {
       console.warn('CallBack מנדרים פלוס עבור מזהה תשלום לא מוכר:', paymentToken);
+      logEntry('rejected: unknown token');
       return res.status(200).send('ignored: unknown token');
     }
-    if (item.payment_status === 'paid') {
+    if (relatedItem.payment_status === 'paid') {
       // כבר טופל בעבר (אולי שידור כפול) - לא עושים כלום.
+      logEntry('ignored: already paid');
       return res.status(200).send('already processed');
     }
 
     // הסכום ב-webhook חייב להיות תואם למה שיצרנו את העסקה איתו - הגנה
     // נוספת מעבר לזיהוי ה-Param הייחודי בלבד.
     const receivedAmount = Math.round(parseFloat(data.Amount || '0'));
-    if (status !== 'OK' || receivedAmount !== item.payment_amount) {
-      console.warn(`CallBack נדחה עבור item #${item.id}: status=${status}, amount=${receivedAmount} (צפוי ${item.payment_amount})`);
-      db.prepare(`UPDATE items SET payment_status = 'pending' WHERE id = ?`).run(item.id);
+    if (status !== 'OK' || receivedAmount !== relatedItem.payment_amount) {
+      console.warn(`CallBack נדחה עבור item #${relatedItem.id}: status=${status}, amount=${receivedAmount} (צפוי ${relatedItem.payment_amount})`);
+      db.prepare(`UPDATE items SET payment_status = 'pending' WHERE id = ?`).run(relatedItem.id);
+      logEntry('rejected: mismatch');
       return res.status(200).send('rejected: mismatch');
     }
 
@@ -102,12 +123,14 @@ router.post('/payment/webhook', express.json(), (req, res) => {
       SET payment_status = 'paid', status = 'pending', paid_at = datetime('now'),
           nedarim_transaction_id = ?
       WHERE id = ?
-    `).run(String(data.TransactionId || item.nedarim_transaction_id || ''), item.id);
+    `).run(String(data.TransactionId || relatedItem.nedarim_transaction_id || ''), relatedItem.id);
 
-    console.log(`תשלום אושר עבור item #${item.id} (${item.payment_amount} ש"ח) - נכנס לתור אישור.`);
+    console.log(`תשלום אושר עבור item #${relatedItem.id} (${relatedItem.payment_amount} ש"ח) - נכנס לתור אישור.`);
+    logEntry('confirmed: paid');
     res.status(200).send('ok');
   } catch (err) {
     console.error('שגיאה בטיפול ב-CallBack מנדרים פלוס:', err);
+    logEntry('error: ' + (err.message || 'unknown'));
     res.status(200).send('error logged');
   }
 });

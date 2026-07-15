@@ -85,6 +85,7 @@ router.get('/payment-settings', requireAuth, (req, res) => {
     allLists: getAllLists(),
     mosad: getSetting('nedarim_mosad', process.env.NEDARIM_MOSAD || ''),
     apiValid: getSetting('nedarim_api_valid', process.env.NEDARIM_API_VALID || ''),
+    apiPassword: getSetting('nedarim_api_password', process.env.NEDARIM_API_PASSWORD || ''),
     enabled: paidFeaturesEnabled(),
     envEnabled: process.env.PAID_FEATURES_ENABLED === 'true',
     configured: nedarim.isConfigured(),
@@ -96,8 +97,54 @@ router.get('/payment-settings', requireAuth, (req, res) => {
 router.post('/payment-settings', requireAuth, express.urlencoded({ extended: true }), (req, res) => {
   setSetting('nedarim_mosad', (req.body.nedarim_mosad || '').trim());
   setSetting('nedarim_api_valid', (req.body.nedarim_api_valid || '').trim());
+  setSetting('nedarim_api_password', (req.body.nedarim_api_password || '').trim());
   setSetting('paid_features_enabled', req.body.enabled ? '1' : '0');
   res.redirect('/admin/payment-settings?saved=1');
+});
+
+// -------- יומן CallBack - כולל בקשות שנדחו (IP לא מוכר) - כדי שאפשר
+// יהיה לבדוק בדיוק מה קרה ולשחרר ידנית תשלום שנדחה בטעות. ראה גם
+// src/nedarim.js (אזהרת "יתכן שנוספה כתובת חדשה" בתיעוד נדרים פלוס). --------
+router.get('/payment-log', requireAuth, async (req, res) => {
+  const { formatIsraelDateTime } = require('../timeUtil');
+  const logs = db.prepare(`
+    SELECT wl.*, i.subject AS item_subject, i.from_email AS item_email, i.paid_tier, i.payment_status AS item_payment_status
+    FROM webhook_log wl LEFT JOIN items i ON i.id = wl.item_id
+    ORDER BY wl.id DESC LIMIT 100
+  `).all().map(l => ({ ...l, received_at_display: formatIsraelDateTime(l.received_at) }));
+
+  res.render('admin/payment_log', { logs, allLists: getAllLists() });
+});
+
+// בדיקה ידנית מול ה-API האמיתי של נדרים פלוס (הסטוריית עסקאות) - לפני
+// שמאשרים ידנית תשלום שה-CallBack שלו נדחה, עדיף להצליב מול הנתונים
+// האמיתיים שלהם ולא רק "לסמוך" על מה שנכתב בבקשה שהתקבלה.
+router.get('/items/:id/verify-payment', requireAuth, async (req, res) => {
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).send('לא נמצא');
+  const result = await nedarim.getRecentTransactions({ maxId: 50 });
+  res.render('admin/verify_payment', { item, result, allLists: getAllLists() });
+});
+
+// אישור ידני של תשלום - למקרים כמו CallBack שנדחה מ-IP לא מתועד. משאירים
+// חובה לציין סיבה, ונשמר outcome ב-webhook_log לתיעוד/ביקורת עתידית.
+router.post('/items/:id/mark-paid', requireAuth, express.urlencoded({ extended: true }), (req, res) => {
+  const item = db.prepare('SELECT * FROM items WHERE id = ?').get(req.params.id);
+  if (!item) return res.status(404).send('לא נמצא');
+  const reason = (req.body.reason || '').trim();
+  if (!reason) return res.status(400).send('חובה לציין סיבה לאישור ידני');
+
+  db.prepare(`
+    UPDATE items SET payment_status = 'paid', status = 'pending', paid_at = datetime('now')
+    WHERE id = ?
+  `).run(item.id);
+
+  db.prepare(`
+    INSERT INTO webhook_log (source_ip, trusted, item_id, payment_token, raw_body, outcome)
+    VALUES ('manual-admin', 1, ?, ?, ?, ?)
+  `).run(item.id, item.payment_token, JSON.stringify({ manual: true, reason }), `manual approve: ${reason}`);
+
+  res.redirect(req.get('Referer') || `/admin/lists/${item.list_id}/queue`);
 });
 
 // -------- הורדת אקסל של כל המנויים במערכת - מאוחד, כל מייל פעם אחת, עם

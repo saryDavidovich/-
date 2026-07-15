@@ -22,9 +22,10 @@
         ממתינות לתשלום (<%= pendingPaymentAds.length %>) - לא בתור האישור עדיין, ייכנסו אוטומטית לאחר שהתשלום יאושר
       </div>
       <% pendingPaymentAds.forEach(ad => { %>
-        <div style="font-size:13px;color:#555;padding:4px 0;border-top:1px solid #eadfc0;">
-          <%= ad.from_email %> - <%= ad.paid_tier === 'premium' ? 'פרימיום' : 'מודגשת' %> (<%= ad.payment_amount %> ש"ח)
-          <% if (ad.subject) { %>- "<%= ad.subject %>"<% } %>
+        <div style="font-size:13px;color:#555;padding:4px 0;border-top:1px solid #eadfc0;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span><%= ad.from_email %> - <%= ad.paid_tier === 'premium' ? 'פרימיום' : 'מודגשת' %> (<%= ad.payment_amount %> ש"ח)
+          <% if (ad.subject) { %>- "<%= ad.subject %>"<% } %></span>
+          <a href="/admin/items/<%= ad.id %>/verify-payment" style="font-size:12px;">התשלום לא נקלט? בדוק ואשר ידנית</a>
         </div>
       <% }) %>
     </div>
