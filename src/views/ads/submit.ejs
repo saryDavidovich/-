@@ -22,6 +22,14 @@
       <label>המייל שלך</label>
       <input type="email" name="email" required />
 
+      <div id="clientDetails" style="display:<%= (requestedTier === 'plus' || requestedTier === 'premium') ? 'block' : 'none' %>;">
+        <label>שם מלא</label>
+        <input type="text" name="client_name" id="clientNameField" />
+        <label>טלפון</label>
+        <input type="tel" name="phone" id="phoneField" />
+        <div class="hint">נדרש למודעה בתשלום - הפרטים מועברים לנדרים פלוס יחד עם התשלום, לצורך זיהוי העסקה בדוחות.</div>
+      </div>
+
       <label>כותרת קצרה (אופציונלי)</label>
       <input type="text" name="subject" />
 
@@ -34,7 +42,7 @@
       <textarea id="body" name="body" rows="5" required></textarea>
 
       <label>סוג מודעה</label>
-      <select name="paid_tier" id="tierSelect" onchange="document.getElementById('freeHint').style.display = (this.value === 'free') ? 'block' : 'none'; document.getElementById('colorFields').style.display = (this.value === 'plus' || this.value === 'premium') ? 'block' : 'none'; document.getElementById('imageField').style.display = (this.value === 'premium') ? 'block' : 'none';">
+      <select name="paid_tier" id="tierSelect" onchange="toggleTierFields()">
         <option value="free" <%= requestedTier === 'free' ? 'selected' : '' %>>מודעת שורה (חינם)</option>
         <option value="plus" <%= requestedTier === 'plus' ? 'selected' : '' %>>מודעה מודגשת<%= (typeof plusPrice !== 'undefined' && plusPrice > 0) ? ' - ' + plusPrice + ' ש"ח' : '' %></option>
         <option value="premium" <%= requestedTier === 'premium' ? 'selected' : '' %>>מודעה פרימיום<%= (typeof premiumPrice !== 'undefined' && premiumPrice > 0) ? ' - ' + premiumPrice + ' ש"ח' : '' %></option>
@@ -60,5 +68,20 @@
   <% } %>
 </div>
 <script src="/toolbar.js"></script>
+<script>
+  function toggleTierFields() {
+    var tier = document.getElementById('tierSelect').value;
+    var isPaid = (tier === 'plus' || tier === 'premium');
+    document.getElementById('freeHint').style.display = (tier === 'free') ? 'block' : 'none';
+    document.getElementById('colorFields').style.display = isPaid ? 'block' : 'none';
+    document.getElementById('imageField').style.display = (tier === 'premium') ? 'block' : 'none';
+    document.getElementById('clientDetails').style.display = isPaid ? 'block' : 'none';
+    document.getElementById('clientNameField').required = isPaid;
+    document.getElementById('phoneField').required = isPaid;
+  }
+  // מפעילים גם בטעינת הדף - למקרה שהגעתם עם ?tier=plus בכתובת, כדי
+  // שהשדות יופיעו כבר מההתחלה ולא רק אחרי שינוי ידני בבורר.
+  toggleTierFields();
+</script>
 </body>
 </html>

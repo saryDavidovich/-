@@ -9,13 +9,18 @@ const { getBaseUrl } = require('../appSettings');
 // "הקמת עסקה בצד שרת" (ראה src/nedarim.js לתיעוד מלא של הבחירה).
 //
 //   GET  /payment/:token            -> דף התשלום עם האייפרם
+//   POST /payment/:token/details    -> שמירת שם+טלפון (רק אם עוד לא היו לנו)
 //   POST /payment/:token/start      -> השרת מקים את העסקה מול נדרים פלוס
 //   POST /payment/webhook           -> CallBack מנדרים פלוס - האישור האמיתי היחיד
 //
 // חשוב: לעולם לא מסמנים "שולם" על סמך תגובת האייפרם בצד הלקוח - רק על סמך
 // ה-webhook, אחרי אימות IP + הצלבת ה-Param הייחודי + הסכום.
-// -----------------------------------------------------------------------
-
+//
+// שם וטלפון: מודעות שנשלחו דרך טופס האתר כבר מגיעות עם השדות האלה
+// (ראה routes/public.js). מודעות שנשלחו במייל - אין דרך אמינה לחלץ שם/
+// טלפון אוטומטית מגוף חופשי של מייל (אנשים לא תמיד יקפידו על תבנית
+// קבועה), ולכן פשוט שואלים על כך בדף התשלום עצמו לפני שממשיכים לתשלום -
+// טופס קצר וקשיח שאנחנו שולטים בו לגמרי, במקום ניחוש שברירי.
 // -----------------------------------------------------------------------
 
 router.get('/payment/:token', (req, res) => {
@@ -30,23 +35,57 @@ router.get('/payment/:token', (req, res) => {
   if (!nedarim.isConfigured()) {
     return res.render('payment', { status: 'not_configured', list, item });
   }
+  if (!item.client_name || !item.phone) {
+    return res.render('payment', { status: 'needs_details', list, item, error: null });
+  }
 
   res.render('payment', { status: 'pay', list, item });
+});
+
+router.post('/payment/:token/details', express.urlencoded({ extended: true }), (req, res) => {
+  const item = db.prepare('SELECT * FROM items WHERE payment_token = ?').get(req.params.token);
+  if (!item) return res.status(404).send('קישור תשלום לא נמצא או לא תקין.');
+  const list = db.prepare('SELECT * FROM lists WHERE id = ?').get(item.list_id);
+
+  const clientName = (req.body.client_name || '').trim();
+  const phone = (req.body.phone || '').trim();
+  if (!clientName || !phone) {
+    return res.render('payment', { status: 'needs_details', list, item, error: 'יש למלא שם וטלפון כדי להמשיך לתשלום.' });
+  }
+
+  db.prepare('UPDATE items SET client_name = ?, phone = ? WHERE id = ?').run(clientName, phone, item.id);
+  res.redirect(`/payment/${item.payment_token}`);
 });
 
 router.post('/payment/:token/start', express.json(), async (req, res) => {
   const item = db.prepare('SELECT * FROM items WHERE payment_token = ?').get(req.params.token);
   if (!item) return res.status(404).json({ ok: false, error: 'לא נמצא' });
   if (item.payment_status === 'paid') return res.status(400).json({ ok: false, error: 'המודעה כבר שולמה' });
+  if (!item.client_name || !item.phone) {
+    // הגנה נוספת - לא אמור לקרות דרך הדף הרגיל (הוא מבקש את הפרטים
+    // קודם), אבל חוסם קריאה ישירה ל-API הזה בלי לעבור את שלב הפרטים.
+    return res.status(400).json({ ok: false, error: 'חסרים פרטי שם/טלפון' });
+  }
 
   const list = db.prepare('SELECT * FROM lists WHERE id = ?').get(item.list_id);
   const callbackUrl = `${getBaseUrl()}/payment/webhook`;
+
+  // פיצול שם מלא ל-FirstName/LastName כפי שנדרים פלוס מצפים - המילה
+  // הראשונה כשם פרטי, השאר כשם משפחה (כמו רוב הטפסים הפשוטים). אם לא
+  // הוזן שם בכלל, נשלח ריק - זה שדה לא חובה בזרימה הזו.
+  const fullName = (item.client_name || '').trim();
+  const [firstName, ...rest] = fullName.split(/\s+/);
+  const lastName = rest.join(' ');
 
   const result = await nedarim.createServerTransaction({
     amount: item.payment_amount,
     paymentToken: item.payment_token,
     comment: `מודעה ${item.paid_tier === 'premium' ? 'פרימיום' : 'מודגשת'} - ${list.name}`,
-    callbackUrl
+    callbackUrl,
+    firstName: fullName ? firstName : '',
+    lastName,
+    phone: item.phone || '',
+    mail: item.from_email || ''
   });
 
   if (!result.ok) {

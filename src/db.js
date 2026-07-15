@@ -308,6 +308,14 @@ if (!itemCols.includes('manual_order')) {
   db.exec("ALTER TABLE items ADD COLUMN manual_order INTEGER");
 }
 
+// שם וטלפון של שולח המודעה - נאספים בטופס האתר (לא חובה בשליחה חינמית,
+// אבל נדרשים בפועל למודעה בתשלום כדי שיועברו לנדרים פלוס יחד עם המייל
+// בעת יצירת העסקה - ראה src/nedarim.js createServerTransaction).
+if (!itemCols.includes('client_name')) {
+  db.exec("ALTER TABLE items ADD COLUMN client_name TEXT");
+  db.exec("ALTER TABLE items ADD COLUMN phone TEXT");
+}
+
 const needsBackfill = db.prepare(`
   SELECT COUNT(*) AS c FROM items
   WHERE status = 'approved' AND manual_order IS NULL

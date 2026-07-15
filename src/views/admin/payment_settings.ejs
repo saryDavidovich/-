@@ -59,6 +59,13 @@
         למקרי קצה נדירים, ומאפשרת גם צפייה ב"יומן CallBack".
       </div>
 
+      <label>קטגוריה (Groupe) על כל עסקה מהמערכת</label>
+      <input type="text" name="nedarim_category" value="<%= category %>" placeholder="דיוור במייל" />
+      <div class="hint" style="font-size:12px;color:#888780;margin-top:-6px;margin-bottom:12px;">
+        מסומן על כל עסקה שנוצרת ממודעות בתשלום - כדי שיהיה קל להבדיל בדוחות
+        של נדרים פלוס בין הכנסות מרשימות התפוצה לבין שאר ההכנסות של המוסד.
+      </div>
+
       <label style="display:flex;align-items:center;gap:8px;">
         <input type="checkbox" name="enabled" value="1" <%= enabled ? 'checked' : '' %> style="width:auto;margin:0;" />
         הפעל תשלומים (מודעות עם מחיר > 0 יעברו דרך תשלום לפני כניסה לתור)

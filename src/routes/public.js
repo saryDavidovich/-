@@ -48,7 +48,7 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
   if (!list) return res.status(404).send('רשימה לא נמצאה');
   const PAID_FEATURES_ENABLED = paidFeaturesEnabled();
 
-  const { email, subject, body, bg_color, text_color } = req.body;
+  const { email, subject, body, bg_color, text_color, client_name, phone } = req.body;
   const tier = validTier(req.body.paid_tier);
   const wc = countWords(body || '');
 
@@ -82,12 +82,13 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
     const paymentStatus = needsPayment ? 'pending' : 'not_required';
 
     db.prepare(`
-      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color, payment_token, payment_amount, payment_status)
-      VALUES (?, 'ad', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color, payment_token, payment_amount, payment_status, client_name, phone)
+      VALUES (?, 'ad', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       list.id, status, email, subject || '', body, wc, tier, JSON.stringify(images),
       useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null,
-      paymentToken, paymentAmount, paymentStatus
+      paymentToken, paymentAmount, paymentStatus,
+      (client_name || '').trim() || null, (phone || '').trim() || null
     );
 
     if (needsPayment) {

@@ -86,6 +86,7 @@ router.get('/payment-settings', requireAuth, (req, res) => {
     mosad: getSetting('nedarim_mosad', process.env.NEDARIM_MOSAD || ''),
     apiValid: getSetting('nedarim_api_valid', process.env.NEDARIM_API_VALID || ''),
     apiPassword: getSetting('nedarim_api_password', process.env.NEDARIM_API_PASSWORD || ''),
+    category: nedarim.getCategory(),
     enabled: paidFeaturesEnabled(),
     envEnabled: process.env.PAID_FEATURES_ENABLED === 'true',
     configured: nedarim.isConfigured(),
@@ -99,6 +100,7 @@ router.post('/payment-settings', requireAuth, express.urlencoded({ extended: tru
   setSetting('nedarim_mosad', (req.body.nedarim_mosad || '').trim());
   setSetting('nedarim_api_valid', (req.body.nedarim_api_valid || '').trim());
   setSetting('nedarim_api_password', (req.body.nedarim_api_password || '').trim());
+  setSetting('nedarim_category', (req.body.nedarim_category || '').trim() || 'דיוור במייל');
   setSetting('paid_features_enabled', req.body.enabled ? '1' : '0');
   if (req.body.base_url && req.body.base_url.trim()) {
     setSetting('base_url', req.body.base_url.trim().replace(/\/+$/, ''));

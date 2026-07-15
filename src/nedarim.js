@@ -29,6 +29,13 @@ function getApiValid() {
 function getApiPassword() {
   return getSetting('nedarim_api_password', process.env.NEDARIM_API_PASSWORD || '');
 }
+// קטגוריה קבועה (Groupe) שמסומנת על כל עסקה שנוצרת מהמערכת הזו - כדי
+// שיהיה אפשר לזהות בדוחות של נדרים פלוס בדיוק אילו הכנסות הגיעו מרשימות
+// התפוצה, להבדיל משאר ההכנסות של המוסד. ניתן לשנות בהגדרות התשלום בפאנל
+// הניהול; ברירת המחדל היא "דיוור במייל".
+function getCategory() {
+  return getSetting('nedarim_category', 'דיוור במייל');
+}
 
 // כתובות ה-IP שמהן נדרים פלוס שולחים CallBack - ראה "אייפרם: אימות תשלום
 // ואבטחה" בתיעוד. כל בקשה שלא מגיעה מאחת מהכתובות האלה נדחית.
@@ -48,7 +55,11 @@ function isConfigured() {
 // יוצרת עסקה מוכנה מראש בצד השרת מול נדרים פלוס. הדף שלנו ישלח לאייפרם
 // רק את ה-ID שחוזר מכאן (FinishTransaction) - הסכום כבר "נעול" בצד נדרים.
 // callbackUrl חייב להיות כתובת ציבורית מלאה (https) שמגיעה חזרה לשרת שלנו.
-async function createServerTransaction({ amount, paymentToken, comment, callbackUrl }) {
+// firstName/lastName/phone/mail הם פרטי הלקוח ששמורים אצלנו על המודעה -
+// לא חובה לפי נדרים פלוס, אבל מבוקש כדי שהעסקה בדוחות שלהם תהיה מזוהה
+// עם הלקוח, לא רק עם סכום גולמי. groupeOverride מאפשר לדרוס את הקטגוריה
+// הקבועה אם צריך בעתיד; כרגע תמיד נשלחת קטגוריית ברירת המחדל (getCategory).
+async function createServerTransaction({ amount, paymentToken, comment, callbackUrl, firstName, lastName, phone, mail, groupeOverride }) {
   if (!isConfigured()) {
     return { ok: false, error: 'נדרים פלוס לא מוגדר (השלימו מספר מוסד וטקסט אימות בהגדרות התשלום בפאנל הניהול)' };
   }
@@ -61,6 +72,11 @@ async function createServerTransaction({ amount, paymentToken, comment, callback
     Currency: '1',
     Tashlumim: '1',
     Comment: comment || '',
+    Groupe: groupeOverride || getCategory(),
+    FirstName: firstName || '',
+    LastName: lastName || '',
+    Phone: phone || '',
+    Mail: mail || '',
     Param1: paymentToken,
     CallBack: callbackUrl,
     AjaxId: String(Date.now())
@@ -183,4 +199,4 @@ async function verifyCallback(req, data, item) {
   return { verified: false, reason: `IP לא מתועד (${sourceIp(req)}) ומזהה עסקה (ID=${callbackId}) לא תואם/לא נמצא בהסטוריה` };
 }
 
-module.exports = { isConfigured, createServerTransaction, isFromNedarim, verifyCallback, getMosad, getRecentTransactions, NEDARIM_CALLBACK_IPS };
+module.exports = { isConfigured, createServerTransaction, isFromNedarim, verifyCallback, getMosad, getCategory, getRecentTransactions, NEDARIM_CALLBACK_IPS };
