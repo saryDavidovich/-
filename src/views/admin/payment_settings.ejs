@@ -34,10 +34,13 @@
         לקבלת מספר מוסד וטקסט אימות: פנו לשירות הלקוחות של נדרים פלוס (office@nedar.im) ובקשו קוד אימות ל-API, ע"י מייל מורשה במוסד.
       </div>
 
-      <label>סיסמת API (ApiPassword) - אופציונלי</label>
-      <input type="text" name="nedarim_api_password" value="<%= apiPassword %>" placeholder="לא חובה - נדרשת רק לבדיקה ידנית מול הסטוריית עסקאות" />
+      <label>סיסמת API (ApiPassword) - מומלץ</label>
+      <input type="text" name="nedarim_api_password" value="<%= apiPassword %>" placeholder="לא חובה, אבל מומלץ" />
       <div class="hint" style="font-size:12px;color:#888780;margin-top:-6px;margin-bottom:12px;">
-        שונה מ-ApiValid! משמשת רק ב"יומן CallBack" כדי להצליב ידנית עסקה שהתקבלה מכתובת IP לא מתועדת מול ההסטוריה האמיתית אצל נדרים פלוס. אם לא תוגדר, אפשר עדיין לאשר תשלום ידנית, רק בלי אפשרות ההצלבה האוטומטית.
+        שונה מ-ApiValid! אישור תשלום אוטומטי לא תלוי בה בדרך כלל (מבוסס על
+        התאמת מזהה עסקה, לא רק כתובת IP) - אבל אם מוגדרת, היא מוסיפה שכבת
+        אימות אוטומטית נוספת (הצלבה חיה מול ההסטוריה האמיתית בנדרים פלוס)
+        למקרי קצה נדירים, ומאפשרת גם צפייה ב"יומן CallBack".
       </div>
 
       <label style="display:flex;align-items:center;gap:8px;">

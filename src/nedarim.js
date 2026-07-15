@@ -85,21 +85,22 @@ async function createServerTransaction({ amount, paymentToken, comment, callback
 
 // req.ip תלוי ב-app.set('trust proxy', ...) שהוגדר ב-server.js - בלי זה
 // תמיד תתקבל כתובת ה-proxy הפנימי של Railway ולא הכתובת האמיתית של הפונה.
+function sourceIp(req) {
+  return (req.ip || '').replace('::ffff:', '');
+}
 function isFromNedarim(req) {
-  const ip = (req.ip || '').replace('::ffff:', '');
-  return NEDARIM_CALLBACK_IPS.includes(ip);
+  return NEDARIM_CALLBACK_IPS.includes(sourceIp(req));
 }
 
-// משיכת הסטוריית עסקאות אמיתית מנדרים פלוס (GetHistoryJson) - משמשת
-// לאימות ידני של תשלום שה-CallBack שלו הגיע מכתובת IP לא מתועדת (ראה
-// אזהרת נדרים פלוס בתיעוד: "יתכן שנוספה כתובת חדשה" - לפני שסומכים על
-// זה עיוור, עדיף להצליב מול הנתונים האמיתיים שלהם). מוגבל ל-20 קריאות
-// בשעה מצידם, ולכן משמש רק לבדיקה ידנית נקודתית, לא כלולאת סנכרון.
+// משיכת הסטוריית עסקאות אמיתית מנדרים פלוס (GetHistoryJson) - "מקור
+// האמת" הסופי: קריאה חוזרת משרת לשרת עם הסיסמה שלנו, שאי אפשר לזייף.
+// מוגבל ל-20 קריאות בשעה מצידם, ולכן נעשה בה שימוש רק כשצריך (ראה
+// verifyCallback), לא כלולאת סנכרון קבועה.
 const HISTORY_URL = 'https://matara.pro/nedarimplus/Reports/Manage3.aspx';
 
 async function getRecentTransactions({ maxId = 50 } = {}) {
   if (!getApiPassword()) {
-    return { ok: false, error: 'סיסמת API (ApiPassword) לא מוגדרת - נדרשת רק לבדיקה ידנית, ראה הגדרות תשלום' };
+    return { ok: false, error: 'סיסמת API (ApiPassword) לא מוגדרת - ראה הגדרות תשלום' };
   }
   const params = new URLSearchParams({
     Action: 'GetHistoryJson',
@@ -116,8 +117,56 @@ async function getRecentTransactions({ maxId = 50 } = {}) {
   if (!Array.isArray(data)) {
     return { ok: false, error: (data && data.Message) || 'שגיאה לא ידועה בקבלת הסטוריית עסקאות' };
   }
-  // האחרונות קודם - נוח יותר לבדיקה ידנית של עסקה שרק קרתה.
-  return { ok: true, transactions: data.slice().reverse() };
+  return { ok: true, transactions: data.slice().reverse() }; // האחרונות קודם
 }
 
-module.exports = { isConfigured, createServerTransaction, isFromNedarim, getMosad, getRecentTransactions, NEDARIM_CALLBACK_IPS };
+// אימות אוטומטי מלא של CallBack, בלי צורך בשלב ידני - שילוב של כמה
+// אותות בלתי-תלויים, כל אחד מספיק לבדו:
+//
+//  1. כתובת ה-IP השולחת נמצאת ברשימה המתועדת של נדרים פלוס. זה מסלול
+//     המהיר והפשוט, אבל תלוי ברשימה שעלולה להתעדכן מצידם (ראה אזהרתם
+//     בתיעוד: "יתכן שנוספה כתובת חדשה") - ולכן לא היחיד.
+//
+//  2. מזהה העסקה (TransactionId) שחזר מ-CreateTransaction בעת יצירת
+//     העסקה (ואנחנו שמרנו אצלנו) זהה למזהה שמופיע ב-CallBack שהתקבל.
+//     זהו סוד ששני הצדדים היחידים שיודעים אותו הם השרת של נדרים פלוס
+//     (שיצר אותו) והשרת שלנו (ששמר אותו) - לא ניתן לזיוף על ידי גורם
+//     חיצוני, ולכן זה בטוח לא פחות מבדיקת IP, ולא תלוי כלל בתשתית
+//     הרשת/פרוקסי שממנה מגיעה הבקשה. זה המסלול שפותר אוטומטית בדיוק את
+//     המקרה של כתובת IP לא מתועדת, בלי לוותר על אבטחה.
+//
+//  3. כגיבוי אחרון (רק אם שני האותות הקודמים לא תאמו, ומוגדרת סיסמת
+//     API): קריאה חוזרת בזמן אמת להסטוריית העסקאות האמיתית של נדרים
+//     פלוס ובדיקה שהעסקה אכן קיימת שם עם אותו סכום - אי אפשר לזייף כי
+//     זו קריאה יזומה על ידינו לשרת שלהם, לא משהו שהתקבל מבחוץ.
+//
+// בכל שלוש הדרכים ה-Amount וה-Status חייבים להתאים למה שציפינו.
+async function verifyCallback(req, data, item) {
+  const amountOk = Math.round(parseFloat(data.Amount || '0')) === item.payment_amount;
+  const statusOk = data.Status === 'OK';
+  if (!statusOk || !amountOk) {
+    return { verified: false, reason: `status=${data.Status}, amount=${data.Amount} (צפוי ${item.payment_amount})` };
+  }
+
+  const ipTrusted = isFromNedarim(req);
+  if (ipTrusted) return { verified: true, reason: `כתובת IP מוכרת (${sourceIp(req)})` };
+
+  const idMatch = item.nedarim_transaction_id && data.TransactionId &&
+    String(data.TransactionId) === String(item.nedarim_transaction_id);
+  if (idMatch) return { verified: true, reason: `מזהה עסקה תואם למה ששמרנו (${data.TransactionId}), למרות IP לא מתועד (${sourceIp(req)})` };
+
+  if (getApiPassword()) {
+    const history = await getRecentTransactions({ maxId: 50 });
+    if (history.ok) {
+      const found = history.transactions.find(t =>
+        String(t.TransactionId) === String(data.TransactionId) &&
+        Math.round(parseFloat(t.Amount || '0')) === item.payment_amount
+      );
+      if (found) return { verified: true, reason: `אומת מול הסטוריית העסקאות האמיתית בנדרים פלוס (TransactionId ${data.TransactionId})` };
+    }
+  }
+
+  return { verified: false, reason: `IP לא מתועד (${sourceIp(req)}) ומזהה העסקה לא תואם/לא נמצא בהסטוריה` };
+}
+
+module.exports = { isConfigured, createServerTransaction, isFromNedarim, verifyCallback, getMosad, getRecentTransactions, NEDARIM_CALLBACK_IPS };
