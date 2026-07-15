@@ -41,7 +41,7 @@ function countWords(str = '') {
 }
 
 const { requiresPayment, priceFor, generatePaymentToken } = require('../paymentUtil');
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const { getBaseUrl } = require('../appSettings');
 
 // שדה ה-"to" של SendGrid מגיע בפורמט כמו: "Name <ask+parenting@yourdomain.com>"
 // או פשוט "ask+parenting@yourdomain.com", ולפעמים כמה כתובות מופרדות בפסיק.
@@ -204,7 +204,7 @@ router.post('/inbound', upload.any(), async (req, res) => {
 
       if (needsPayment) {
         const { sendViaSendGrid } = require('../compiler');
-        const paymentUrl = `${BASE_URL}/payment/${paymentToken}`;
+        const paymentUrl = `${getBaseUrl()}/payment/${paymentToken}`;
         const tierName = tier === 'premium' ? 'פרימיום' : 'מודגשת';
         await sendViaSendGrid(
           fromEmail,

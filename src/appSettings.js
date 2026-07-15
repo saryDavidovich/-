@@ -20,4 +20,14 @@ function getAllSettings() {
     .reduce((acc, row) => { acc[row.key] = row.value; return acc; }, {});
 }
 
-module.exports = { getSetting, setSetting, getAllSettings };
+// כתובת הבסיס הציבורית של האתר (לבניית קישורי תשלום/הסרה/ארכיון וכו').
+// עדיפות: הגדרה בממשק הניהול (ניתנת לעריכה בלי redeploy) > משתנה סביבה
+// BASE_URL > ברירת מחדל מקומית. חשוב לוודא שזו כתובת הדומיין האמיתי
+// שהלקוחות רואים - לא כתובת ה-*.up.railway.app האוטומטית של Railway,
+// אם מחובר דומיין מותאם אישית.
+function getBaseUrl() {
+  const raw = getSetting('base_url', process.env.BASE_URL || 'http://localhost:3000');
+  return raw.trim().replace(/\/+$/, ''); // בלי סלאש מסיים, כדי לא לקבל // בקישורים
+}
+
+module.exports = { getSetting, setSetting, getAllSettings, getBaseUrl };

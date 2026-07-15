@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const BRAND_NAME = process.env.BRAND_NAME || 'הרשימות שלנו';
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const { getBaseUrl } = require('./appSettings');
 const INBOUND_DOMAIN = process.env.INBOUND_DOMAIN || 'yourdomain.com';
 const UPLOAD_DIR = path.join(__dirname, '..', 'data', 'uploads');
 
@@ -43,7 +43,7 @@ function formatBody(raw) {
 
 function absoluteUrl(path) {
   if (/^https?:\/\//i.test(path)) return path;
-  return `${BASE_URL}${path.startsWith('/') ? '' : '/'}${path}`;
+  return `${getBaseUrl()}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
 // הופך תמונה שהועלתה למערכת (נתיב כמו /uploads/xxx.png) למחרוזת base64
@@ -433,7 +433,7 @@ function renderEntry(entry, accent, useCid) {
 function renderIssue({ list, entries = [], unsubscribeToken, useCid = false }) {
   const accent = list.accent_color || '#1D9E75';
   const bodyHtml = entries.map(entry => renderEntry(entry, accent, useCid)).join('');
-  const unsubUrl = `${BASE_URL}/unsubscribe/${unsubscribeToken}`;
+  const unsubUrl = `${getBaseUrl()}/unsubscribe/${unsubscribeToken}`;
 
   return `<!DOCTYPE html>
 <html dir="rtl" lang="he">
@@ -466,7 +466,7 @@ function renderIssue({ list, entries = [], unsubscribeToken, useCid = false }) {
         <div style="font-size:12px;color:#888780;margin-bottom:10px;">
           קיבלת מייל זה כי אתה רשום לרשימת "${escapeHtml(list.name)}" של ${escapeHtml(BRAND_NAME)}.
         </div>
-        <a href="${BASE_URL}/archive/${list.slug}" style="display:inline-block;font-size:12px;color:${accent};background:transparent;border:1px solid ${accent};text-decoration:none;padding:6px 14px;border-radius:14px;margin:3px;">גיליונות קודמים</a>
+        <a href="${getBaseUrl()}/archive/${list.slug}" style="display:inline-block;font-size:12px;color:${accent};background:transparent;border:1px solid ${accent};text-decoration:none;padding:6px 14px;border-radius:14px;margin:3px;">גיליונות קודמים</a>
         <a href="${unsubUrl}" style="display:inline-block;font-size:12px;color:#c04828;background:transparent;border:1px solid #c04828;text-decoration:none;padding:6px 14px;border-radius:14px;margin:3px;">להסרה מרשימה זו</a>
       </td>
     </tr>

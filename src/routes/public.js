@@ -93,7 +93,7 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
     if (needsPayment) {
       try {
         const { sendViaSendGrid } = require('../compiler');
-        const paymentUrl = `${process.env.BASE_URL || 'http://localhost:3000'}/payment/${paymentToken}`;
+        const paymentUrl = `${require('../appSettings').getBaseUrl()}/payment/${paymentToken}`;
         const tierName = tier === 'premium' ? 'פרימיום' : 'מודגשת';
         await sendViaSendGrid(
           email,

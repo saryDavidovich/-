@@ -7,7 +7,7 @@ const db = require('../db');
 const { renderIssue } = require('../templates');
 const { getOrderedApprovedEntries, nextManualOrder, saveManualOrder, getIssueSizeInfo, describeEntry } = require('../issueBuilder');
 const nedarim = require('../nedarim');
-const { getSetting, setSetting } = require('../appSettings');
+const { getSetting, setSetting, getBaseUrl } = require('../appSettings');
 const { paidFeaturesEnabled } = require('../paymentUtil');
 
 function requireAuth(req, res, next) {
@@ -89,7 +89,8 @@ router.get('/payment-settings', requireAuth, (req, res) => {
     enabled: paidFeaturesEnabled(),
     envEnabled: process.env.PAID_FEATURES_ENABLED === 'true',
     configured: nedarim.isConfigured(),
-    baseUrl: process.env.BASE_URL || 'http://localhost:3000',
+    baseUrl: getBaseUrl(),
+    envBaseUrl: process.env.BASE_URL || '',
     saved: req.query.saved === '1'
   });
 });
@@ -99,6 +100,9 @@ router.post('/payment-settings', requireAuth, express.urlencoded({ extended: tru
   setSetting('nedarim_api_valid', (req.body.nedarim_api_valid || '').trim());
   setSetting('nedarim_api_password', (req.body.nedarim_api_password || '').trim());
   setSetting('paid_features_enabled', req.body.enabled ? '1' : '0');
+  if (req.body.base_url && req.body.base_url.trim()) {
+    setSetting('base_url', req.body.base_url.trim().replace(/\/+$/, ''));
+  }
   res.redirect('/admin/payment-settings?saved=1');
 });
 

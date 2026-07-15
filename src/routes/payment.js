@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const nedarim = require('../nedarim');
+const { getBaseUrl } = require('../appSettings');
 
 // -----------------------------------------------------------------------
 // תשלום עבור מודעה בתשלום (מודגשת/פרימיום), דרך נדרים פלוס - זרימת
@@ -15,7 +16,7 @@ const nedarim = require('../nedarim');
 // ה-webhook, אחרי אימות IP + הצלבת ה-Param הייחודי + הסכום.
 // -----------------------------------------------------------------------
 
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+// -----------------------------------------------------------------------
 
 router.get('/payment/:token', (req, res) => {
   const item = db.prepare('SELECT * FROM items WHERE payment_token = ?').get(req.params.token);
@@ -39,7 +40,7 @@ router.post('/payment/:token/start', express.json(), async (req, res) => {
   if (item.payment_status === 'paid') return res.status(400).json({ ok: false, error: 'המודעה כבר שולמה' });
 
   const list = db.prepare('SELECT * FROM lists WHERE id = ?').get(item.list_id);
-  const callbackUrl = `${BASE_URL}/payment/webhook`;
+  const callbackUrl = `${getBaseUrl()}/payment/webhook`;
 
   const result = await nedarim.createServerTransaction({
     amount: item.payment_amount,
