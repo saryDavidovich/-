@@ -316,6 +316,12 @@ if (!itemCols.includes('client_name')) {
   db.exec("ALTER TABLE items ADD COLUMN phone TEXT");
 }
 
+// קישור לחיצה על תמונה במודעת פרימיום - אם מוגדר, לוחצים על התמונה
+// ועוברים לכתובת הזו (למשל לאתר של המפרסם), במקום שהתמונה תהיה סטטית.
+if (!itemCols.includes('image_link')) {
+  db.exec("ALTER TABLE items ADD COLUMN image_link TEXT");
+}
+
 const needsBackfill = db.prepare(`
   SELECT COUNT(*) AS c FROM items
   WHERE status = 'approved' AND manual_order IS NULL

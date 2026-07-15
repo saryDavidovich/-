@@ -59,6 +59,9 @@
         <div id="imageField" style="display:<%= requestedTier === 'premium' ? 'block' : 'none' %>;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:8px;">
           <label>תמונה או גיף (אופציונלי, זמין רק לפרימיום)</label>
           <input type="file" name="image" accept="image/*" />
+          <label>קישור לחיצה על התמונה (אופציונלי)</label>
+          <input type="url" name="image_link" placeholder="https://" dir="ltr" style="text-align:left;" />
+          <div class="hint">אם ממלאים, לחיצה על התמונה בגיליון תעביר לכתובת הזו (למשל לאתר שלכם).</div>
         </div>
       <% } %>
 

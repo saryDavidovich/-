@@ -259,14 +259,19 @@ router.post('/items/:id/edit-ad', requireAuth, upload.single('image'), async (re
     const finalPath = await compressUploadedImage(req.file.path);
     images = [`/uploads/${path.basename(finalPath)}`];
   }
+  let imageLink = null;
+  if (paidTier === 'premium' && images.length) {
+    const trimmedLink = (req.body.image_link || '').trim();
+    if (/^https?:\/\/\S+$/i.test(trimmedLink)) imageLink = trimmedLink;
+  }
 
   db.prepare(`
-    UPDATE items SET body_edited = ?, subject = ?, paid_tier = ?, images_json = ?, bg_color = ?, text_color = ?
+    UPDATE items SET body_edited = ?, subject = ?, paid_tier = ?, images_json = ?, bg_color = ?, text_color = ?, image_link = ?
     WHERE id = ?
   `).run(
     req.body.body_edited, req.body.subject || '', paidTier, JSON.stringify(images),
     useColor ? (req.body.bg_color || null) : null, useColor ? (req.body.text_color || null) : null,
-    item.id
+    imageLink, item.id
   );
 
   res.redirect(`/admin/lists/${item.list_id}/approved`);
@@ -365,14 +370,19 @@ router.post('/items/:id/approve-ad', requireAuth, upload.single('image'), async 
     const finalPath = await compressUploadedImage(req.file.path);
     images = [`/uploads/${path.basename(finalPath)}`];
   }
+  let imageLink = null;
+  if (paidTier === 'premium' && images.length) {
+    const trimmedLink = (req.body.image_link || '').trim();
+    if (/^https?:\/\/\S+$/i.test(trimmedLink)) imageLink = trimmedLink;
+  }
 
   db.prepare(`
-    UPDATE items SET status = 'approved', body_edited = ?, subject = ?, paid_tier = ?, images_json = ?, bg_color = ?, text_color = ?, approved_at = datetime('now'), manual_order = ?
+    UPDATE items SET status = 'approved', body_edited = ?, subject = ?, paid_tier = ?, images_json = ?, bg_color = ?, text_color = ?, image_link = ?, approved_at = datetime('now'), manual_order = ?
     WHERE id = ?
   `).run(
     editedBody, editedSubject, paidTier, JSON.stringify(images),
     useColor ? (req.body.bg_color || null) : null, useColor ? (req.body.text_color || null) : null,
-    nextManualOrder(item.list_id), item.id
+    imageLink, nextManualOrder(item.list_id), item.id
   );
 
   res.redirect(`/admin/lists/${item.list_id}/queue`);
@@ -449,7 +459,7 @@ router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), async 
   if (!list) return;
 
   try {
-    const { subject, body, paid_tier, bg_color, text_color } = req.body;
+    const { subject, body, paid_tier, bg_color, text_color, image_link } = req.body;
     const wc = (body || '').trim().split(/\s+/).filter(Boolean).length;
     const useStyle = paid_tier === 'plus' || paid_tier === 'premium';
 
@@ -459,13 +469,18 @@ router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), async 
       const finalPath = await compressUploadedImage(req.file.path);
       images = [`/uploads/${path.basename(finalPath)}`];
     }
+    let imageLink = null;
+    if (paid_tier === 'premium' && images.length) {
+      const trimmedLink = (image_link || '').trim();
+      if (/^https?:\/\/\S+$/i.test(trimmedLink)) imageLink = trimmedLink;
+    }
 
     db.prepare(`
-      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, paid_tier, images_json, bg_color, text_color, approved_at, manual_order)
-      VALUES (?, 'ad', 'approved', 'admin', ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, paid_tier, images_json, bg_color, text_color, image_link, approved_at, manual_order)
+      VALUES (?, 'ad', 'approved', 'admin', ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
     `).run(
       list.id, subject || '', body, body, wc, paid_tier || 'free', JSON.stringify(images),
-      useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null, nextManualOrder(list.id)
+      useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null, imageLink, nextManualOrder(list.id)
     );
 
     res.redirect(`/admin/lists/${list.id}/preview`);

@@ -206,12 +206,15 @@ function renderAd(item, useCid, accent) {
   // אותו מזהה, ראה compiler.js. בתצוגה בדפדפן (preview/history/archive):
   // data URI, כי שם אין "מצורפים" בכלל, רק HTML גולמי.
   const imagesHtml = images.map((src, index) => {
+    // אם הוגדר קישור לתמונה (רק במודעת פרימיום, ראה routes/public.js) -
+    // עוטפים את התמונה ב-<a> כדי שלחיצה עליה תעביר לכתובת הזו.
+    const wrap = (html) => item.image_link ? `<a href="${escapeHtml(item.image_link)}">${html}</a>` : html;
     if (useCid) {
-      return `<img src="cid:${imageCid(item.id, index)}" alt="" style="max-width:100%;border-radius:8px;margin-bottom:8px;display:block;" />`;
+      return wrap(`<img src="cid:${imageCid(item.id, index)}" alt="" style="max-width:100%;border-radius:8px;margin-bottom:8px;display:block;" />`);
     }
     const dataUri = embedImageAsDataUri(src);
     if (dataUri) {
-      return `<img src="${dataUri}" alt="" style="max-width:100%;border-radius:8px;margin-bottom:8px;display:block;" />`;
+      return wrap(`<img src="${dataUri}" alt="" style="max-width:100%;border-radius:8px;margin-bottom:8px;display:block;" />`);
     }
     return `<a href="${escapeHtml(absoluteUrl(src))}" style="display:inline-block;font-size:13px;color:${linkColor};text-decoration:underline;margin-bottom:8px;">לצפייה בתמונה &#8599;</a>`;
   }).join('');

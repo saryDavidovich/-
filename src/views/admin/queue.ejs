@@ -95,6 +95,8 @@
         <div id="imageField-<%= item.id %>" style="display:<%= item.paid_tier === 'premium' ? 'block' : 'none' %>;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:6px;">
           <label>תמונה או הנפשה (GIF - אופציונלי, זמין רק לפרימיום)</label>
           <input type="file" name="image" accept="image/*,.gif" />
+          <label>קישור לחיצה על התמונה (אופציונלי)</label>
+          <input type="url" name="image_link" value="<%= item.image_link || '' %>" placeholder="https://" dir="ltr" style="text-align:left;" />
         </div>
 
         <div class="actions">

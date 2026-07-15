@@ -48,7 +48,7 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
   if (!list) return res.status(404).send('רשימה לא נמצאה');
   const PAID_FEATURES_ENABLED = paidFeaturesEnabled();
 
-  const { email, subject, body, bg_color, text_color, client_name, phone } = req.body;
+  const { email, subject, body, bg_color, text_color, client_name, phone, image_link } = req.body;
   const tier = validTier(req.body.paid_tier);
   const wc = countWords(body || '');
 
@@ -64,10 +64,15 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
 
   try {
     let images = [];
+    let imageLink = null;
     if (PAID_FEATURES_ENABLED && tier === 'premium' && req.file) {
       const { compressUploadedImage } = require('../imageProcessing');
       const finalPath = await compressUploadedImage(req.file.path);
       images = [`/uploads/${path.basename(finalPath)}`];
+      // רק http/https - מונע הזרקת javascript: או כתובות אחרות שיכולות
+      // להיות מסוכנות כשהן מוצגות כ-href בגיליון בפועל.
+      const trimmedLink = (image_link || '').trim();
+      if (/^https?:\/\/\S+$/i.test(trimmedLink)) imageLink = trimmedLink;
     }
     const useStyle = PAID_FEATURES_ENABLED && (tier === 'plus' || tier === 'premium');
 
@@ -82,13 +87,13 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
     const paymentStatus = needsPayment ? 'pending' : 'not_required';
 
     db.prepare(`
-      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color, payment_token, payment_amount, payment_status, client_name, phone)
-      VALUES (?, 'ad', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color, payment_token, payment_amount, payment_status, client_name, phone, image_link)
+      VALUES (?, 'ad', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       list.id, status, email, subject || '', body, wc, tier, JSON.stringify(images),
       useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null,
       paymentToken, paymentAmount, paymentStatus,
-      (client_name || '').trim() || null, (phone || '').trim() || null
+      (client_name || '').trim() || null, (phone || '').trim() || null, imageLink
     );
 
     if (needsPayment) {
