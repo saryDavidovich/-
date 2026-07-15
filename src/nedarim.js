@@ -6,8 +6,9 @@
 // כי מדובר בתשלום עבור מודעה במחיר קבוע שהוגדר בפאנל הניהול.
 //
 // אימות תשלום אמיתי קורה אך ורק דרך ה-CallBack שנדרים פלוס שולחים לשרת
-// שלנו (verifyCallbackSource + הצלבת ה-Param/הסכום ב-payment.js) - לעולם
-// לא סומכים על תגובת האייפרם בצד הלקוח (TransactionResponse) לבדה.
+// שלנו (verifyCallback למטה) - לעולם לא סומכים על תגובת האייפרם בצד
+// הלקוח (TransactionResponse) לבדה. הזיהוי איזה פריט זה מבוסס בעיקר על
+// שדה ה-ID שחוזר (לא TransactionId - ראה הסבר מפורט ב-verifyCallback).
 
 const fetch = require('node-fetch');
 const { getSetting } = require('./appSettings');
@@ -127,46 +128,59 @@ async function getRecentTransactions({ maxId = 50 } = {}) {
 //     המהיר והפשוט, אבל תלוי ברשימה שעלולה להתעדכן מצידם (ראה אזהרתם
 //     בתיעוד: "יתכן שנוספה כתובת חדשה") - ולכן לא היחיד.
 //
-//  2. מזהה העסקה (TransactionId) שחזר מ-CreateTransaction בעת יצירת
-//     העסקה (ואנחנו שמרנו אצלנו) זהה למזהה שמופיע ב-CallBack שהתקבל.
-//     זהו סוד ששני הצדדים היחידים שיודעים אותו הם השרת של נדרים פלוס
-//     (שיצר אותו) והשרת שלנו (ששמר אותו) - לא ניתן לזיוף על ידי גורם
-//     חיצוני, ולכן זה בטוח לא פחות מבדיקת IP, ולא תלוי כלל בתשתית
+//  2. מזהה העסקה - שדה ה-ID (לא TransactionId! זה שם השדה במבנה
+//     "TransactionResponse", שהוא בדיוק מה שחוזר ב-CallBack של הזרימה בה
+//     אנחנו משתמשים - "אייפרם: הקמת עסקה בצד שרת", ראה תיעוד: "העדכון
+//     לכתובת ה-CallBack נשלח... עם אותו JSON של TransactionResponse".
+//     השדה TransactionId שייך למבנה נתונים *אחר* לגמרי - ה-webhook
+//     הסטטי ברמת מוסד שנרשם דרך מייל למשרד, שאנחנו לא משתמשים בו) -
+//     שחזר מ-CreateTransaction בעת יצירת העסקה (ואנחנו שמרנו אצלנו)
+//     זהה למה שמופיע ב-CallBack שהתקבל. זהו סוד ששני הצדדים היחידים
+//     שיודעים אותו הם השרת של נדרים פלוס (שיצר אותו) והשרת שלנו (ששמר
+//     אותו) - לא ניתן לזיוף על ידי גורם חיצוני, ולא תלוי כלל בתשתית
 //     הרשת/פרוקסי שממנה מגיעה הבקשה. זה המסלול שפותר אוטומטית בדיוק את
 //     המקרה של כתובת IP לא מתועדת, בלי לוותר על אבטחה.
 //
 //  3. כגיבוי אחרון (רק אם שני האותות הקודמים לא תאמו, ומוגדרת סיסמת
 //     API): קריאה חוזרת בזמן אמת להסטוריית העסקאות האמיתית של נדרים
-//     פלוס ובדיקה שהעסקה אכן קיימת שם עם אותו סכום - אי אפשר לזייף כי
-//     זו קריאה יזומה על ידינו לשרת שלהם, לא משהו שהתקבל מבחוץ.
+//     פלוס (שם כן נקרא TransactionId, זה שם השדה הנכון באותו endpoint)
+//     ובדיקה שהעסקה אכן קיימת שם - אי אפשר לזייף כי זו קריאה יזומה על
+//     ידינו לשרת שלהם, לא משהו שהתקבל מבחוץ.
 //
-// בכל שלוש הדרכים ה-Amount וה-Status חייבים להתאים למה שציפינו.
+// שימו לב: הסכום עצמו כבר "ננעל" בצד נדרים פלוס בשלב יצירת העסקה
+// (CreateTransaction, לפני שהלקוח בכלל ראה טופס תשלום) - לכן אין כאן
+// תלות בכך שה-Amount יחזור ב-CallBack (הוא לא שדה מובטח במבנה
+// TransactionResponse); אם הוא כן חוזר, בודקים אותו כבדיקת סבירות
+// נוספת, אבל היעדרו לא גורם לדחייה.
 async function verifyCallback(req, data, item) {
-  const amountOk = Math.round(parseFloat(data.Amount || '0')) === item.payment_amount;
   const statusOk = data.Status === 'OK';
-  if (!statusOk || !amountOk) {
-    return { verified: false, reason: `status=${data.Status}, amount=${data.Amount} (צפוי ${item.payment_amount})` };
+  if (!statusOk) {
+    return { verified: false, reason: `Status=${data.Status} (${data.Message || 'ללא הודעה'})` };
+  }
+  if (data.Amount !== undefined && data.Amount !== null && data.Amount !== '') {
+    const receivedAmount = Math.round(parseFloat(data.Amount));
+    if (receivedAmount !== item.payment_amount) {
+      return { verified: false, reason: `סכום לא תואם: התקבל ${data.Amount}, צפוי ${item.payment_amount}` };
+    }
   }
 
   const ipTrusted = isFromNedarim(req);
   if (ipTrusted) return { verified: true, reason: `כתובת IP מוכרת (${sourceIp(req)})` };
 
-  const idMatch = item.nedarim_transaction_id && data.TransactionId &&
-    String(data.TransactionId) === String(item.nedarim_transaction_id);
-  if (idMatch) return { verified: true, reason: `מזהה עסקה תואם למה ששמרנו (${data.TransactionId}), למרות IP לא מתועד (${sourceIp(req)})` };
+  const callbackId = data.ID != null ? String(data.ID) : null;
+  const idMatch = item.nedarim_transaction_id && callbackId &&
+    callbackId === String(item.nedarim_transaction_id);
+  if (idMatch) return { verified: true, reason: `מזהה עסקה (ID) תואם למה ששמרנו (${callbackId}), למרות IP לא מתועד (${sourceIp(req)})` };
 
-  if (getApiPassword()) {
+  if (getApiPassword() && callbackId) {
     const history = await getRecentTransactions({ maxId: 50 });
     if (history.ok) {
-      const found = history.transactions.find(t =>
-        String(t.TransactionId) === String(data.TransactionId) &&
-        Math.round(parseFloat(t.Amount || '0')) === item.payment_amount
-      );
-      if (found) return { verified: true, reason: `אומת מול הסטוריית העסקאות האמיתית בנדרים פלוס (TransactionId ${data.TransactionId})` };
+      const found = history.transactions.find(t => String(t.TransactionId) === callbackId);
+      if (found) return { verified: true, reason: `אומת מול הסטוריית העסקאות האמיתית בנדרים פלוס (מזהה ${callbackId})` };
     }
   }
 
-  return { verified: false, reason: `IP לא מתועד (${sourceIp(req)}) ומזהה העסקה לא תואם/לא נמצא בהסטוריה` };
+  return { verified: false, reason: `IP לא מתועד (${sourceIp(req)}) ומזהה עסקה (ID=${callbackId}) לא תואם/לא נמצא בהסטוריה` };
 }
 
 module.exports = { isConfigured, createServerTransaction, isFromNedarim, verifyCallback, getMosad, getRecentTransactions, NEDARIM_CALLBACK_IPS };

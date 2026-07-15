@@ -66,11 +66,25 @@ router.post('/payment/webhook', express.json(), async (req, res) => {
   // תמיד עונים 200 גם בשגיאה/דחייה - מונע שנדרים ינסה לשדר את אותו עדכון
   // שוב ושוב מיותר; השגיאה מתועדת ביומן וגם ב-webhook_log לבדיקה בממשק.
   const data = req.body || {};
-  const paymentToken = data.Param1 || null;
   const sourceIp = (req.ip || '').replace('::ffff:', '');
-  const relatedItem = paymentToken
-    ? db.prepare('SELECT * FROM items WHERE payment_token = ?').get(paymentToken)
-    : null;
+
+  // זיהוי הפריט: קודם כל לפי שדה ה-ID (זה מה שבאמת חוזר במבנה
+  // TransactionResponse בזרימה שלנו, ראה src/nedarim.js verifyCallback
+  // להסבר המלא למה - לא TransactionId), עם Param1 (payment_token) כגיבוי
+  // בלבד למקרה ש-ID חסר או לא תואם לשום פריט אצלנו.
+  const nedarimId = data.ID != null ? String(data.ID) : null;
+  const paymentToken = data.Param1 || null;
+
+  let relatedItem = null;
+  let matchedBy = null;
+  if (nedarimId) {
+    relatedItem = db.prepare('SELECT * FROM items WHERE nedarim_transaction_id = ?').get(nedarimId);
+    if (relatedItem) matchedBy = 'ID';
+  }
+  if (!relatedItem && paymentToken) {
+    relatedItem = db.prepare('SELECT * FROM items WHERE payment_token = ?').get(paymentToken);
+    if (relatedItem) matchedBy = 'Param1';
+  }
 
   const logEntry = (trusted, outcome) => {
     try {
@@ -84,15 +98,10 @@ router.post('/payment/webhook', express.json(), async (req, res) => {
   };
 
   try {
-    if (!paymentToken) {
-      console.warn('CallBack מנדרים פלוס בלי Param1 (מזהה תשלום):', data);
-      logEntry(false, 'rejected: no token');
-      return res.status(200).send('ignored: no token');
-    }
     if (!relatedItem) {
-      console.warn('CallBack מנדרים פלוס עבור מזהה תשלום לא מוכר:', paymentToken);
-      logEntry(false, 'rejected: unknown token');
-      return res.status(200).send('ignored: unknown token');
+      console.warn(`CallBack מנדרים פלוס - לא נמצא פריט תואם (ID=${nedarimId}, Param1=${paymentToken}):`, data);
+      logEntry(false, 'rejected: no matching item');
+      return res.status(200).send('ignored: unknown item');
     }
     if (relatedItem.payment_status === 'paid') {
       // כבר טופל בעבר (אולי שידור כפול) - לא עושים כלום.
@@ -116,10 +125,10 @@ router.post('/payment/webhook', express.json(), async (req, res) => {
       SET payment_status = 'paid', status = 'pending', paid_at = datetime('now'),
           nedarim_transaction_id = ?
       WHERE id = ?
-    `).run(String(data.TransactionId || relatedItem.nedarim_transaction_id || ''), relatedItem.id);
+    `).run(nedarimId || relatedItem.nedarim_transaction_id || '', relatedItem.id);
 
-    console.log(`תשלום אושר אוטומטית עבור item #${relatedItem.id} (${relatedItem.payment_amount} ש"ח) - ${verification.reason} - נכנס לתור אישור.`);
-    logEntry(true, `auto-confirmed: ${verification.reason}`);
+    console.log(`תשלום אושר אוטומטית עבור item #${relatedItem.id} (${relatedItem.payment_amount} ש"ח) - זוהה לפי ${matchedBy} - ${verification.reason} - נכנס לתור אישור.`);
+    logEntry(true, `auto-confirmed (matched by ${matchedBy}): ${verification.reason}`);
     res.status(200).send('ok');
   } catch (err) {
     console.error('שגיאה בטיפול ב-CallBack מנדרים פלוס:', err);
