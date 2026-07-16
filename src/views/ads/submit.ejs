@@ -56,6 +56,11 @@
           <label>צבע טקסט</label>
           <input type="color" name="text_color" value="#2C2C2A" style="height:36px;padding:2px;" />
         </div>
+        <div id="linkField" style="display:<%= (requestedTier === 'plus' || requestedTier === 'premium') ? 'block' : 'none' %>;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:8px;">
+          <label>קישור לחיצה על המודעה (אופציונלי)</label>
+          <input type="url" name="link_url" id="linkUrlField" placeholder="https://" dir="ltr" style="text-align:left;" />
+          <div class="hint" id="linkHint">אם ממלאים, לחיצה על כל המודעה בגיליון תעביר לכתובת הזו.</div>
+        </div>
         <div id="imageField" style="display:<%= requestedTier === 'premium' ? 'block' : 'none' %>;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:8px;">
           <label>תמונה או גיף (אופציונלי, זמין רק לפרימיום)</label>
           <input type="file" name="image" accept="image/*" />
@@ -76,12 +81,23 @@
     var tier = document.getElementById('tierSelect').value;
     var isPaid = (tier === 'plus' || tier === 'premium');
     document.getElementById('freeHint').style.display = (tier === 'free') ? 'block' : 'none';
-    // colorFields/imageField קיימים ב-DOM רק אם paidEnabled=true (ראה
-    // <% if (paidEnabled) %> למעלה) - בלי הבדיקה הזו, כשהתשלום כבוי,
+    // colorFields/linkField/imageField קיימים ב-DOM רק אם paidEnabled=true
+    // (ראה <% if (paidEnabled) %> למעלה) - בלי הבדיקה הזו, כשהתשלום כבוי,
     // getElementById מחזיר null וההמשך (כולל clientDetails) לא היה
     // מתבצע בכלל בגלל שגיאה שקטה בקונסול.
     var colorFields = document.getElementById('colorFields');
     if (colorFields) colorFields.style.display = isPaid ? 'block' : 'none';
+    var linkField = document.getElementById('linkField');
+    if (linkField) {
+      linkField.style.display = isPaid ? 'block' : 'none';
+      var linkPrice = tier === 'plus' ? <%= linkPricePlus || 0 %> : <%= linkPricePremium || 0 %>;
+      var linkHint = document.getElementById('linkHint');
+      if (linkHint) {
+        linkHint.textContent = linkPrice > 0
+          ? 'אם ממלאים, לחיצה על כל המודעה בגיליון תעביר לכתובת הזו. תוספת של ' + linkPrice + ' ש"ח למחיר המודעה.'
+          : 'אם ממלאים, לחיצה על כל המודעה בגיליון תעביר לכתובת הזו.';
+      }
+    }
     var imageField = document.getElementById('imageField');
     if (imageField) imageField.style.display = (tier === 'premium') ? 'block' : 'none';
     document.getElementById('clientDetails').style.display = isPaid ? 'block' : 'none';

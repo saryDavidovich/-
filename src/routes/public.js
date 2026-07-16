@@ -39,7 +39,8 @@ router.get('/ads/:slug', (req, res) => {
   res.render('ads/submit', {
     list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT,
     requestedTier, error: null, sent: false,
-    plusPrice: priceFor(list, 'plus'), premiumPrice: priceFor(list, 'premium')
+    plusPrice: priceFor(list, 'plus'), premiumPrice: priceFor(list, 'premium'),
+    linkPricePlus: Number(list.link_price_plus) || 0, linkPricePremium: Number(list.link_price_premium) || 0
   });
 });
 
@@ -48,7 +49,7 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
   if (!list) return res.status(404).send('רשימה לא נמצאה');
   const PAID_FEATURES_ENABLED = paidFeaturesEnabled();
 
-  const { email, subject, body, bg_color, text_color, client_name, phone, image_link } = req.body;
+  const { email, subject, body, bg_color, text_color, client_name, phone, image_link, link_url } = req.body;
   const tier = validTier(req.body.paid_tier);
   const wc = countWords(body || '');
 
@@ -58,7 +59,8 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
     return res.render('ads/submit', {
       list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier,
       error: `המודעה החינמית מוגבלת ל-${FREE_WORD_LIMIT} מילים (כרגע: ${wc}).`,
-      sent: false, plusPrice: priceFor(list, 'plus'), premiumPrice: priceFor(list, 'premium')
+      sent: false, plusPrice: priceFor(list, 'plus'), premiumPrice: priceFor(list, 'premium'),
+      linkPricePlus: Number(list.link_price_plus) || 0, linkPricePremium: Number(list.link_price_premium) || 0
     });
   }
 
@@ -76,22 +78,32 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
     }
     const useStyle = PAID_FEATURES_ENABLED && (tier === 'plus' || tier === 'premium');
 
-    // מודעה בתשלום (מודגשת/פרימיום עם מחיר > 0 לרשימה זו) לא נכנסת ישר
-    // ל"ממתין לאישור" - היא נשמרת כ"ממתינה לתשלום" ומועברת לדף הסליקה.
-    // רק אחרי שנדרים פלוס מאשרים בפועל (webhook, ראה routes/payment.js)
-    // היא הופכת ל-pending הרגיל ונכנסת לתור.
-    const needsPayment = requiresPayment(list, tier);
+    // קישור כללי למודעה - זמין רק במודגשת/פרימיום (במודעת שורה חינמית
+    // האפשרות לא קיימת בכלל). רק http/https, אותה בדיקה כמו image_link.
+    let linkUrl = null;
+    if (tier === 'plus' || tier === 'premium') {
+      const trimmedAdLink = (link_url || '').trim();
+      if (/^https?:\/\/\S+$/i.test(trimmedAdLink)) linkUrl = trimmedAdLink;
+    }
+    const hasLink = !!linkUrl;
+
+    // מודעה בתשלום (מודגשת/פרימיום עם מחיר > 0 לרשימה זו, כולל תוספת
+    // מחיר אם צורף קישור) לא נכנסת ישר ל"ממתין לאישור" - היא נשמרת
+    // כ"ממתינה לתשלום" ומועברת לדף הסליקה. רק אחרי שנדרים פלוס מאשרים
+    // בפועל (webhook, ראה routes/payment.js) היא הופכת ל-pending הרגיל
+    // ונכנסת לתור.
+    const needsPayment = requiresPayment(list, tier, hasLink);
     const status = needsPayment ? 'pending_payment' : 'pending';
     const paymentToken = needsPayment ? generatePaymentToken() : null;
-    const paymentAmount = needsPayment ? priceFor(list, tier) : null;
+    const paymentAmount = needsPayment ? priceFor(list, tier, hasLink) : null;
     const paymentStatus = needsPayment ? 'pending' : 'not_required';
 
     db.prepare(`
-      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color, payment_token, payment_amount, payment_status, client_name, phone, image_link)
-      VALUES (?, 'ad', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color, link_url, payment_token, payment_amount, payment_status, client_name, phone, image_link)
+      VALUES (?, 'ad', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       list.id, status, email, subject || '', body, wc, tier, JSON.stringify(images),
-      useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null,
+      useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null, linkUrl,
       paymentToken, paymentAmount, paymentStatus,
       (client_name || '').trim() || null, (phone || '').trim() || null, imageLink
     );
@@ -118,13 +130,18 @@ router.post('/ads/:slug', upload.single('image'), async (req, res) => {
       return res.redirect(`/payment/${paymentToken}`);
     }
 
-    res.render('ads/submit', { list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier, error: null, sent: true, plusPrice: priceFor(list, 'plus'), premiumPrice: priceFor(list, 'premium') });
+    res.render('ads/submit', {
+      list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier, error: null, sent: true,
+      plusPrice: priceFor(list, 'plus'), premiumPrice: priceFor(list, 'premium'),
+      linkPricePlus: Number(list.link_price_plus) || 0, linkPricePremium: Number(list.link_price_premium) || 0
+    });
   } catch (err) {
     console.error('שגיאה בפרסום מודעה מהלקוח:', err);
     res.render('ads/submit', {
       list, paidEnabled: PAID_FEATURES_ENABLED, wordLimit: FREE_WORD_LIMIT, requestedTier: tier,
       error: 'אירעה שגיאה בשליחת המודעה. נסה שוב, אולי בלי תמונה.',
-      sent: false, plusPrice: priceFor(list, 'plus'), premiumPrice: priceFor(list, 'premium')
+      sent: false, plusPrice: priceFor(list, 'plus'), premiumPrice: priceFor(list, 'premium'),
+      linkPricePlus: Number(list.link_price_plus) || 0, linkPricePremium: Number(list.link_price_premium) || 0
     });
   }
 });

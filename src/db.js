@@ -176,6 +176,14 @@ if (!listCols.includes('plus_price')) {
   db.exec("ALTER TABLE lists ADD COLUMN premium_price INTEGER DEFAULT 0");
 }
 
+// תוספת מחיר (בשקלים) כשהלקוח מצרף קישור למודעה מודגשת/פרימיום - מעל
+// מחיר הבסיס של הרמה. נפרד לכל רשימה, כמו plus_price/premium_price.
+// 0 = בלי תוספת (קישור בחינם, אם מופעל בכלל).
+if (!listCols.includes('link_price_plus')) {
+  db.exec("ALTER TABLE lists ADD COLUMN link_price_plus INTEGER DEFAULT 0");
+  db.exec("ALTER TABLE lists ADD COLUMN link_price_premium INTEGER DEFAULT 0");
+}
+
 // הודעות "צור קשר" מהלקוחות למנהל - טבלה נפרדת (לא items, כי אלה לא
 // מיועדות לפרסום בגיליון) - עם ציון מאיזו רשימה כל הודעה הגיעה.
 db.exec(`
@@ -320,6 +328,14 @@ if (!itemCols.includes('client_name')) {
 // ועוברים לכתובת הזו (למשל לאתר של המפרסם), במקום שהתמונה תהיה סטטית.
 if (!itemCols.includes('image_link')) {
   db.exec("ALTER TABLE items ADD COLUMN image_link TEXT");
+}
+
+// קישור כללי שהלקוח עצמו מצרף למודעה מודגשת/פרימיום (בטופס האתר או
+// בשורת "קישור:" במייל) - עם קישור כזה, כל המודעה (לא רק תמונה) הופכת
+// ללחיצה שמעבירה לכתובת הזו. שונה מ-image_link (שהוא תוספת ידנית של
+// המנהל, ספציפית לתמונה בפרימיום, ונשאר כפי שהיה לצורך תאימות לאחור).
+if (!itemCols.includes('link_url')) {
+  db.exec("ALTER TABLE items ADD COLUMN link_url TEXT");
 }
 
 const needsBackfill = db.prepare(`

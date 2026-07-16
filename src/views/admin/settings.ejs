@@ -49,6 +49,14 @@
       <label>מחיר למודעה פרימיום (ש"ח)</label>
       <input type="number" name="premium_price" min="0" step="1" value="<%= list.premium_price || 0 %>" />
 
+      <div class="pill" style="display:block;margin:12px 0;line-height:1.6;">
+        תוספת מחיר (ש"ח) כשלקוח מצרף קישור למודעה מודגשת/פרימיום (הופך את כל המודעה ללחיצה). 0 = בלי תוספת.
+      </div>
+      <label>תוספת קישור למודעה מודגשת (ש"ח)</label>
+      <input type="number" name="link_price_plus" min="0" step="1" value="<%= list.link_price_plus || 0 %>" />
+      <label>תוספת קישור למודעה פרימיום (ש"ח)</label>
+      <input type="number" name="link_price_premium" min="0" step="1" value="<%= list.link_price_premium || 0 %>" />
+
       <div class="sidebar-divider" style="background:#e3e1d8;margin:16px 0;"></div>
 
       <label>יום ושעה לשליחה אוטומטית שבועית</label>

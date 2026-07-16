@@ -78,6 +78,7 @@
         <label style="font-size:12px;color:#888780;">רמת מודעה</label>
         <select name="paid_tier" onchange="
           document.getElementById('colorFields-<%= item.id %>').style.display = (this.value === 'plus' || this.value === 'premium') ? 'block' : 'none';
+          document.getElementById('linkField-<%= item.id %>').style.display = (this.value === 'plus' || this.value === 'premium') ? 'block' : 'none';
           document.getElementById('imageField-<%= item.id %>').style.display = (this.value === 'premium') ? 'block' : 'none';
         ">
           <option value="free" <%= item.paid_tier === 'free' ? 'selected' : '' %>>חינם (מודעת שורה - בלי עיצוב)</option>
@@ -90,6 +91,11 @@
           <input type="color" name="bg_color" value="<%= item.bg_color || '#FFF6E5' %>" style="height:36px;padding:2px;" />
           <label>צבע טקסט</label>
           <input type="color" name="text_color" value="<%= item.text_color || '#2C2C2A' %>" style="height:36px;padding:2px;" />
+        </div>
+
+        <div id="linkField-<%= item.id %>" style="display:<%= (item.paid_tier === 'plus' || item.paid_tier === 'premium') ? 'block' : 'none' %>;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:6px;">
+          <label>קישור לחיצה על המודעה (אופציונלי)</label>
+          <input type="url" name="link_url" value="<%= item.link_url || '' %>" placeholder="https://" dir="ltr" style="text-align:left;" />
         </div>
 
         <div id="imageField-<%= item.id %>" style="display:<%= item.paid_tier === 'premium' ? 'block' : 'none' %>;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:6px;">

@@ -25,6 +25,7 @@
       <label>רמת מודעה</label>
       <select name="paid_tier" id="tierSelect" onchange="
         document.getElementById('colorFields').style.display = (this.value === 'plus' || this.value === 'premium') ? 'block' : 'none';
+        document.getElementById('linkField').style.display = (this.value === 'plus' || this.value === 'premium') ? 'block' : 'none';
         document.getElementById('imageField').style.display = (this.value === 'premium') ? 'block' : 'none';
       ">
         <option value="free">חינם (מודעת שורה - בלי עיצוב)</option>
@@ -38,6 +39,11 @@
 
         <label>צבע טקסט</label>
         <input type="color" name="text_color" value="#2C2C2A" style="height:36px;padding:2px;" />
+      </div>
+
+      <div id="linkField" style="display:none;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:6px;">
+        <label>קישור לחיצה על המודעה (אופציונלי)</label>
+        <input type="url" name="link_url" placeholder="https://" dir="ltr" style="text-align:left;" />
       </div>
 
       <div id="imageField" style="display:none;border:1px dashed #d3d1c7;border-radius:8px;padding:12px;margin-top:6px;">

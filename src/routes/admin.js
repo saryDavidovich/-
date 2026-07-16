@@ -272,14 +272,19 @@ router.post('/items/:id/edit-ad', requireAuth, upload.single('image'), verifyCsr
     const trimmedLink = (req.body.image_link || '').trim();
     if (/^https?:\/\/\S+$/i.test(trimmedLink)) imageLink = trimmedLink;
   }
+  let linkUrl = null;
+  if (paidTier === 'plus' || paidTier === 'premium') {
+    const trimmedAdLink = (req.body.link_url || '').trim();
+    if (/^https?:\/\/\S+$/i.test(trimmedAdLink)) linkUrl = trimmedAdLink;
+  }
 
   db.prepare(`
-    UPDATE items SET body_edited = ?, subject = ?, paid_tier = ?, images_json = ?, bg_color = ?, text_color = ?, image_link = ?
+    UPDATE items SET body_edited = ?, subject = ?, paid_tier = ?, images_json = ?, bg_color = ?, text_color = ?, image_link = ?, link_url = ?
     WHERE id = ?
   `).run(
     req.body.body_edited, req.body.subject || '', paidTier, JSON.stringify(images),
     useColor ? (req.body.bg_color || null) : null, useColor ? (req.body.text_color || null) : null,
-    imageLink, item.id
+    imageLink, linkUrl, item.id
   );
 
   res.redirect(`/admin/lists/${item.list_id}/approved`);
@@ -383,14 +388,19 @@ router.post('/items/:id/approve-ad', requireAuth, upload.single('image'), verify
     const trimmedLink = (req.body.image_link || '').trim();
     if (/^https?:\/\/\S+$/i.test(trimmedLink)) imageLink = trimmedLink;
   }
+  let linkUrl = null;
+  if (paidTier === 'plus' || paidTier === 'premium') {
+    const trimmedAdLink = (req.body.link_url || '').trim();
+    if (/^https?:\/\/\S+$/i.test(trimmedAdLink)) linkUrl = trimmedAdLink;
+  }
 
   db.prepare(`
-    UPDATE items SET status = 'approved', body_edited = ?, subject = ?, paid_tier = ?, images_json = ?, bg_color = ?, text_color = ?, image_link = ?, approved_at = datetime('now'), manual_order = ?
+    UPDATE items SET status = 'approved', body_edited = ?, subject = ?, paid_tier = ?, images_json = ?, bg_color = ?, text_color = ?, image_link = ?, link_url = ?, approved_at = datetime('now'), manual_order = ?
     WHERE id = ?
   `).run(
     editedBody, editedSubject, paidTier, JSON.stringify(images),
     useColor ? (req.body.bg_color || null) : null, useColor ? (req.body.text_color || null) : null,
-    imageLink, nextManualOrder(item.list_id), item.id
+    imageLink, linkUrl, nextManualOrder(item.list_id), item.id
   );
 
   res.redirect(`/admin/lists/${item.list_id}/queue`);
@@ -467,7 +477,7 @@ router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), verify
   if (!list) return;
 
   try {
-    const { subject, body, paid_tier, bg_color, text_color, image_link } = req.body;
+    const { subject, body, paid_tier, bg_color, text_color, image_link, link_url } = req.body;
     const wc = (body || '').trim().split(/\s+/).filter(Boolean).length;
     const useStyle = paid_tier === 'plus' || paid_tier === 'premium';
 
@@ -482,13 +492,18 @@ router.post('/lists/:id/compose/ad', requireAuth, upload.single('image'), verify
       const trimmedLink = (image_link || '').trim();
       if (/^https?:\/\/\S+$/i.test(trimmedLink)) imageLink = trimmedLink;
     }
+    let linkUrl = null;
+    if (paid_tier === 'plus' || paid_tier === 'premium') {
+      const trimmedAdLink = (link_url || '').trim();
+      if (/^https?:\/\/\S+$/i.test(trimmedAdLink)) linkUrl = trimmedAdLink;
+    }
 
     db.prepare(`
-      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, paid_tier, images_json, bg_color, text_color, image_link, approved_at, manual_order)
-      VALUES (?, 'ad', 'approved', 'admin', ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+      INSERT INTO items (list_id, type, status, from_email, subject, body_raw, body_edited, word_count, paid_tier, images_json, bg_color, text_color, image_link, link_url, approved_at, manual_order)
+      VALUES (?, 'ad', 'approved', 'admin', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
     `).run(
       list.id, subject || '', body, body, wc, paid_tier || 'free', JSON.stringify(images),
-      useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null, imageLink, nextManualOrder(list.id)
+      useStyle ? (bg_color || null) : null, useStyle ? (text_color || null) : null, imageLink, linkUrl, nextManualOrder(list.id)
     );
 
     res.redirect(`/admin/lists/${list.id}/preview`);
@@ -561,7 +576,7 @@ router.post('/lists/:id/settings', requireAuth, express.urlencoded({ extended: t
   const list = loadListOr404(req, res);
   if (!list) return;
 
-  const { name, description, accent_color, show_ads_free, show_ads_plus, show_ads_premium, show_ask_button, send_day, send_hour, send_minute, plus_price, premium_price } = req.body;
+  const { name, description, accent_color, show_ads_free, show_ads_plus, show_ads_premium, show_ask_button, send_day, send_hour, send_minute, plus_price, premium_price, link_price_plus, link_price_premium } = req.body;
 
   // בונים את הפלטה מתוך שני מערכים מקבילים (color_name[] / color_hex[]) -
   // מתעלמים משורות ריקות (שם ריק, למשל אם הוסיפו שורה ולא מילאו אותה).
@@ -575,7 +590,7 @@ router.post('/lists/:id/settings', requireAuth, express.urlencoded({ extended: t
     UPDATE lists SET name = ?, description = ?, accent_color = ?,
       show_ads_free = ?, show_ads_plus = ?, show_ads_premium = ?, show_ask_button = ?,
       send_day = ?, send_hour = ?, send_minute = ?, ad_color_palette_json = ?,
-      plus_price = ?, premium_price = ?
+      plus_price = ?, premium_price = ?, link_price_plus = ?, link_price_premium = ?
     WHERE id = ?
   `).run(
     name.trim(), description || '', accent_color || list.accent_color,
@@ -583,6 +598,7 @@ router.post('/lists/:id/settings', requireAuth, express.urlencoded({ extended: t
     parseInt(send_day, 10) || 0, parseInt(send_hour, 10) || 0, parseInt(send_minute, 10) || 0,
     JSON.stringify(palette),
     Math.max(0, parseInt(plus_price, 10) || 0), Math.max(0, parseInt(premium_price, 10) || 0),
+    Math.max(0, parseInt(link_price_plus, 10) || 0), Math.max(0, parseInt(link_price_premium, 10) || 0),
     list.id
   );
 

@@ -72,8 +72,60 @@ function findMatchingRecipient(toRaw) {
   return null;
 }
 
-function extractLinks(body) {
-  return [...body.matchAll(/https?:\/\/\S+/gi)].map(m => m[0]);
+// מפרסרת את הטיוטה המובנית של מודגשת/פרימיום (ראה adBodyTemplate ב-
+// templates.js): שלוש שורות בדיוק - "תוכן המודעה:" / "צבע רקע:" /
+// "קישור:". כל שדה נשאב לפי מיקומו (השורה שמתחילה בתווית שלו), לא לפי
+// חיפוש חופשי בכל הטקסט - כך שאם הלקוח מזכיר "קישור" או "צבע" בתוך תוכן
+// המודעה עצמו זה לא "נתפס" בטעות כשדה. מחזירה null אם לא נמצאה בכלל
+// התווית "תוכן המודעה:" (סימן לטיוטה ישנה, מלפני העדכון הזה).
+function parseAdEmailTemplate(text) {
+  const lines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+  const bodyLabelRe = /^[ \t]*תוכן\s*המודעה[ \t]*[:\-][ \t]*(.*)$/;
+  const colorLabelRe = /^[ \t]*צבע(?:[ \t]*רקע)?[ \t]*[:\-][ \t]*(.*)$/;
+  const linkLabelRe = /^[ \t]*קישור[ \t]*[:\-][ \t]*(.*)$/;
+
+  let bodyStart = -1, bodyFirstLine = '', colorIdx = -1, linkIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (bodyStart === -1) {
+      const m = lines[i].match(bodyLabelRe);
+      if (m) { bodyStart = i; bodyFirstLine = m[1]; continue; }
+    }
+    if (colorIdx === -1 && colorLabelRe.test(lines[i])) { colorIdx = i; continue; }
+    if (linkIdx === -1 && linkLabelRe.test(lines[i])) { linkIdx = i; continue; }
+  }
+  if (bodyStart === -1) return null;
+
+  const bodyEnd = colorIdx !== -1 ? colorIdx : (linkIdx !== -1 ? linkIdx : lines.length);
+  const bodyLines = [];
+  if (bodyFirstLine.trim()) bodyLines.push(bodyFirstLine);
+  bodyLines.push(...lines.slice(bodyStart + 1, bodyEnd));
+
+  const colorRaw = colorIdx !== -1 ? (lines[colorIdx].match(colorLabelRe)[1] || '').trim() : '';
+  const linkRaw = linkIdx !== -1 ? (lines[linkIdx].match(linkLabelRe)[1] || '').trim() : '';
+
+  return { body: bodyLines.join('\n').trim(), colorRaw, linkRaw };
+}
+
+// כמו extractRequestedColor למטה, אבל מקבלת ישר את הערך הגולמי (בלי
+// התווית "צבע:") - משמש לפענוח הטיוטה המובנית החדשה, אחרי שהשורה כבר
+// זוהתה ע"י parseAdEmailTemplate.
+function resolveColorValue(raw, palette) {
+  if (!raw) return null;
+  const hexMatch = raw.match(/^#?([0-9a-fA-F]{6})$/);
+  if (hexMatch) return '#' + hexMatch[1].toUpperCase();
+  const cleaned = raw.replace(/[^\u05D0-\u05EA]/g, '');
+  for (const c of (palette || [])) {
+    if (c.name && cleaned.includes(c.name.replace(/[^\u05D0-\u05EA]/g, ''))) return c.hex;
+  }
+  return null;
+}
+
+// רק http/https - כמו image_link בטופס האתר (routes/public.js) - מונע
+// הזרקת javascript: או כתובות אחרות מסוכנות שיוצגו כ-href בגיליון. אם
+// לא תקין, פשוט מתעלמים (המודעה מתפרסמת בלי קישור, לא נחסמת).
+function resolveLinkValue(raw) {
+  const trimmed = (raw || '').trim();
+  return /^https?:\/\/\S+$/i.test(trimmed) ? trimmed : null;
 }
 
 // מסיר כל הופעה מדויקת של טקסטי ההוראה שהמערכת עצמה הזינה מראש לתוך
@@ -165,40 +217,59 @@ router.post('/inbound', upload.any(), async (req, res) => {
         }
       }
 
-      // בקשת צבע רקע דרך שורת טקסט ("צבע: כחול" וכו') - נתמך במודגשת
-      // ובפרימיום. השורה עצמה מוסרת מהתוכן שיוצג בגיליון.
-      let bodyText = stripKnownInstructions(text, list);
+      // מודגשת/פרימיום: הטיוטה שנשלחת ללקוח בנויה משלוש שורות ("תוכן
+      // המודעה:" / "צבע רקע:" / "קישור:", ראה adBodyTemplate ב-
+      // templates.js) - כל שדה נשאב לפי מיקומו. אם הלקוח שלח טיוטה ישנה
+      // בלי התווית "תוכן המודעה:" (מלפני העדכון) - נופלים חזרה לפענוח
+      // החופשי הישן של צבע (בלי קישור, כי השדה הזה לא היה קיים אז).
+      // שימו לב: קישורים שמופיעים בטקסט החופשי של המודעה עצמה כבר לא
+      // הופכים ללחיצים אוטומטית - רק מה שהוזן במפורש בשורת "קישור:".
+      let bodyText;
       let bgColor = null;
       let textColor = null;
+      let linkUrl = null;
+
       if (type === 'ad' && (tier === 'plus' || tier === 'premium')) {
         let palette = [];
         try { palette = JSON.parse(list.ad_color_palette_json || '[]'); } catch (e) { palette = []; }
-        const colorRequest = extractRequestedColor(bodyText, palette);
-        if (colorRequest) {
-          bgColor = colorRequest.bg;
-          textColor = pickReadableTextColor(colorRequest.bg);
-          bodyText = bodyText.replace(colorRequest.matchedLine, '').trim();
+
+        const structured = parseAdEmailTemplate(text);
+        if (structured) {
+          bodyText = stripKnownInstructions(structured.body, list);
+          const resolvedColor = resolveColorValue(structured.colorRaw, palette);
+          if (resolvedColor) { bgColor = resolvedColor; textColor = pickReadableTextColor(resolvedColor); }
+          linkUrl = resolveLinkValue(structured.linkRaw);
+        } else {
+          bodyText = stripKnownInstructions(text, list);
+          const colorRequest = extractRequestedColor(bodyText, palette);
+          if (colorRequest) {
+            bgColor = colorRequest.bg;
+            textColor = pickReadableTextColor(colorRequest.bg);
+            bodyText = bodyText.replace(colorRequest.matchedLine, '').trim();
+          }
         }
+      } else {
+        bodyText = stripKnownInstructions(text, list);
       }
 
-      const links = extractLinks(bodyText);
-
-      // מודעה מודגשת/פרימיום עם מחיר מוגדר לרשימה זו - לא נכנסת ישר לתור,
-      // אלא ל"ממתינה לתשלום" (ראה src/paymentUtil.js + routes/payment.js,
-      // אותה לוגיקה בדיוק כמו בטופס האתר). ללקוח שנרשם דרך המייל שולחים
-      // בחזרה מייל עם קישור לדף התשלום, כי אין לו דף תגובה מיידי כמו בטופס.
-      const needsPayment = type === 'ad' && requiresPayment(list, tier);
+      // מודעה מודגשת/פרימיום עם מחיר מוגדר לרשימה זו (כולל תוספת מחיר של
+      // קישור, אם צורף) - לא נכנסת ישר לתור, אלא ל"ממתינה לתשלום" (ראה
+      // src/paymentUtil.js + routes/payment.js, אותה לוגיקה בדיוק כמו
+      // בטופס האתר). ללקוח שנרשם דרך המייל שולחים בחזרה מייל עם קישור
+      // לדף התשלום, כי אין לו דף תגובה מיידי כמו בטופס.
+      const hasLink = !!linkUrl;
+      const needsPayment = type === 'ad' && requiresPayment(list, tier, hasLink);
       const status = needsPayment ? 'pending_payment' : 'pending';
       const paymentToken = needsPayment ? generatePaymentToken() : null;
-      const paymentAmount = needsPayment ? priceFor(list, tier) : null;
+      const paymentAmount = needsPayment ? priceFor(list, tier, hasLink) : null;
       const paymentStatus = needsPayment ? 'pending' : 'not_required';
 
       db.prepare(`
-        INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, links_json, bg_color, text_color, payment_token, payment_amount, payment_status)
+        INSERT INTO items (list_id, type, status, from_email, subject, body_raw, word_count, paid_tier, images_json, bg_color, text_color, link_url, payment_token, payment_amount, payment_status)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         list.id, type, status, fromEmail, subject, bodyText, countWords(bodyText), tier,
-        JSON.stringify(attachedImages), JSON.stringify(links), bgColor, textColor,
+        JSON.stringify(attachedImages), bgColor, textColor, linkUrl,
         paymentToken, paymentAmount, paymentStatus
       );
 

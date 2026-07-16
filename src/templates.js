@@ -130,6 +130,13 @@ function getKnownInstructionStrings(list) {
   return [INSTR_ASK, INSTR_FREE_AD, INSTR_REPLY, INSTR_CONTACT, instrPlusAd(list), instrPremiumAd(list)];
 }
 
+// גוף מייל מובנה לשלוש שורות נפרדות - תוכן/צבע/קישור - כדי ש-inbound.js
+// יוכל לשאוב כל שדה לפי מיקומו (השורה שמתחילה בתווית שלו), במקום לחפש
+// טקסט חופשי בכל הגוף. משמש למודגשת ולפרימיום כאחד.
+function adBodyTemplate() {
+  return 'תוכן המודעה: \nצבע רקע: \nקישור: ';
+}
+
 // עיגולי צבע אמיתיים (לא רק שם) - בדיוק מה שהמנהל הגדיר בהגדרות הרשימה -
 // מוצגים בריבוע ה-hover של כפתורי מודגשת/פרימיום, כדי שהלקוח יראה ממש את
 // הגוון לפני שהוא כותב את השם בטיוטה.
@@ -196,19 +203,26 @@ function cardWrapper(accent, innerHtml, { bg, border } = {}) {
 
 function renderAd(item, useCid, accent) {
   const images = JSON.parse(item.images_json || '[]');
-  const links = JSON.parse(item.links_json || '[]');
   const body = formatBody(item.body_edited ?? item.body_raw);
 
   const fg = item.text_color || '#2c2c2a';
-  const linkColor = item.bg_color ? fg : '#185fa5';
+
+  // קישור כללי שהלקוח צירף למודעה (מודגשת/פרימיום בלבד, ראה link_url) -
+  // הופך את כל המודעה ללחיצה. עדיפות ל-link_url (הקישור שהלקוח עצמו הזין
+  // בטופס/במייל) על פני image_link (תוספת ידנית ישנה של המנהל, ספציפית
+  // לתמונה) - אם שניהם ריקים, המודעה נשארת בלי שום קישור לחיצה, כולל
+  // קישורים שמופיעים בטקסט עצמו (אלה כבר לא הופכים ללחיצים אוטומטית).
+  const wholeAdLink = item.link_url || null;
 
   // במייל בפועל (useCid=true): src="cid:..." - הקובץ מצורף להודעה עם
   // אותו מזהה, ראה compiler.js. בתצוגה בדפדפן (preview/history/archive):
   // data URI, כי שם אין "מצורפים" בכלל, רק HTML גולמי.
   const imagesHtml = images.map((src, index) => {
-    // אם הוגדר קישור לתמונה (רק במודעת פרימיום, ראה routes/public.js) -
-    // עוטפים את התמונה ב-<a> כדי שלחיצה עליה תעביר לכתובת הזו.
-    const wrap = (html) => item.image_link ? `<a href="${escapeHtml(item.image_link)}">${html}</a>` : html;
+    // אם כל המודעה כבר עטופה בקישור (wholeAdLink), לא עוטפים גם את
+    // התמונה בנפרד - קישור מקונן (<a> בתוך <a>) לא תקין ב-HTML. אם אין
+    // קישור כללי אבל יש image_link (המנגנון הישן, ידני-בלבד) - משתמשים
+    // בו רק על התמונה, כמו קודם.
+    const wrap = (html) => (!wholeAdLink && item.image_link) ? `<a href="${escapeHtml(item.image_link)}">${html}</a>` : html;
     if (useCid) {
       return wrap(`<img src="cid:${imageCid(item.id, index)}" alt="" style="max-width:100%;border-radius:8px;margin-bottom:8px;display:block;" />`);
     }
@@ -216,20 +230,20 @@ function renderAd(item, useCid, accent) {
     if (dataUri) {
       return wrap(`<img src="${dataUri}" alt="" style="max-width:100%;border-radius:8px;margin-bottom:8px;display:block;" />`);
     }
-    return `<a href="${escapeHtml(absoluteUrl(src))}" style="display:inline-block;font-size:13px;color:${linkColor};text-decoration:underline;margin-bottom:8px;">לצפייה בתמונה &#8599;</a>`;
+    const fallbackColor = item.bg_color ? fg : '#185fa5';
+    return `<a href="${escapeHtml(absoluteUrl(src))}" style="display:inline-block;font-size:13px;color:${fallbackColor};text-decoration:underline;margin-bottom:8px;">לצפייה בתמונה &#8599;</a>`;
   }).join('');
 
-  const linksHtml = links.length
-    ? `<div style="margin-top:8px;">${links.map(l => `<a href="${escapeHtml(l)}" style="color:${linkColor};">${escapeHtml(l)}</a>`).join('<br>')}</div>`
-    : '';
-
-  const inner = `
+  let inner = `
     <div style="font-size:15px;line-height:1.6;color:${fg};">
       ${imagesHtml}
       ${item.subject ? `<strong>${escapeHtml(item.subject)}</strong>${wordLimitBadge(item)}<br>` : wordLimitBadge(item)}
       ${body}
-      ${linksHtml}
     </div>`;
+
+  if (wholeAdLink) {
+    inner = `<a href="${escapeHtml(wholeAdLink)}" style="display:block;text-decoration:none;color:inherit;">${inner}</a>`;
+  }
 
   // מודעות עם צבע רקע מותאם אישית (מודגשת/פרימיום שהאדמין צבע): הצבע
   // עצמו הופך למסגרת. אחרת (חינם, או מודגשת/פרימיום בלי צבע שנבחר) -
@@ -343,20 +357,26 @@ function renderActionButtons(list, accent) {
     }));
   }
   if (list.show_ads_plus) {
+    const linkNote = Number(list.link_price_plus) > 0
+      ? ` צירוף קישור (שהופך את כל המודעה ללחיצה) כרוך בתוספת ${Number(list.link_price_plus)} ש"ח.`
+      : ' אפשר גם לצרף קישור - לחיצה על המודעה תעביר אליו.';
     buttons.push(renderHoverButton(accent, {
       buttonStyle: btnStyle(accent, false),
       label: 'פרסום מודעה מודגשת',
-      mailtoUrl: mailto('adsplus', list.slug, 'מודעה מודגשת', 'צבע: '),
-      explanation: 'המודעה תפורסם בתוך מסגרת צבעונית בולטת. במייל שנפתח כבר מוכנה שורת "צבע:" - כתבו שם את שם הצבע הרצוי, ומתחת את תוכן המודעה.',
+      mailtoUrl: mailto('adsplus', list.slug, 'מודעה מודגשת', adBodyTemplate()),
+      explanation: `המודעה תפורסם בתוך מסגרת צבעונית בולטת. במייל שנפתח יש שלוש שורות למילוי: תוכן המודעה, צבע רקע (אופציונלי), וקישור (אופציונלי).${linkNote}`,
       extraHtml: renderColorSwatchesHtml(list)
     }));
   }
   if (list.show_ads_premium) {
+    const linkNote = Number(list.link_price_premium) > 0
+      ? ` צירוף קישור (שהופך את כל המודעה ללחיצה) כרוך בתוספת ${Number(list.link_price_premium)} ש"ח.`
+      : ' אפשר גם לצרף קישור - לחיצה על המודעה תעביר אליו.';
     buttons.push(renderHoverButton(accent, {
       buttonStyle: btnStyle(accent, false),
       label: 'פרסום מודעה פרימיום',
-      mailtoUrl: mailto('adspremium', list.slug, 'מודעה פרימיום', 'צבע: '),
-      explanation: 'אפשר לצרף תמונה או גיף כקובץ מצורף למייל. במייל שנפתח כבר מוכנה שורת "צבע:" - כתבו שם את שם הצבע הרצוי, ומתחת את תוכן המודעה.',
+      mailtoUrl: mailto('adspremium', list.slug, 'מודעה פרימיום', adBodyTemplate()),
+      explanation: `אפשר לצרף תמונה או גיף כקובץ מצורף למייל. במייל שנפתח יש שלוש שורות למילוי: תוכן המודעה, צבע רקע (אופציונלי), וקישור (אופציונלי).${linkNote}`,
       extraHtml: renderColorSwatchesHtml(list)
     }));
   }
